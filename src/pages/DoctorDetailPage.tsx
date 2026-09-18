@@ -100,11 +100,21 @@ export const DoctorDetailPage: React.FC = () => {
                 {doctor.name}
               </h1>
               <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-800 text-[11px] font-bold">
-                <ShieldCheck className="w-3.5 h-3.5" /> Verified Public Profile
+                <ShieldCheck className="w-3.5 h-3.5" />
+                {doctor.verified_public_profile ? 'Verified Doctor Profile' : 'Provider Verification Pending'}
               </span>
-              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-[11px] font-mono font-semibold">
-                Status: {doctor.provider_status}
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-[11px] font-mono font-semibold">
+                {doctor.campuscare_enabled ? 'CampusCare Consultation Approved' : 'Directory-Only Reference'}
               </span>
+              {doctor.video_consultation_enabled && doctor.consent_status === 'verified' ? (
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-[11px] font-bold">
+                  <Video className="w-3.5 h-3.5" /> Video Consultation Available
+                </span>
+              ) : (
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 text-[11px]">
+                  In-Person Consultation
+                </span>
+              )}
             </div>
 
             <p className="text-sm sm:text-base font-semibold text-primary-600 dark:text-primary-400">

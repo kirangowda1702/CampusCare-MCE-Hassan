@@ -59,11 +59,21 @@ export const DoctorCard: React.FC<DoctorCardProps> = ({ doctor, onBook }) => {
         {/* Verified Badges */}
         <div className="flex flex-wrap gap-1.5 mb-3">
           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-800 text-[10px] font-bold">
-            <ShieldCheck className="w-3 h-3" /> Verified Public Profile
+            <ShieldCheck className="w-3 h-3" />
+            {doctor.verified_public_profile ? 'Verified Doctor Profile' : 'Provider Verification Pending'}
           </span>
           <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 text-[10px] font-mono font-medium">
-            {doctor.provider_status === 'directory_only' ? 'Directory Listing' : doctor.provider_status}
+            {doctor.campuscare_enabled ? 'CampusCare Consultation Approved' : 'Directory-Only Reference'}
           </span>
+          {doctor.video_consultation_enabled && doctor.consent_status === 'verified' ? (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-[10px] font-bold">
+              <Video className="w-3 h-3" /> Video Consultation Available
+            </span>
+          ) : (
+            <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-slate-50 dark:bg-slate-850 text-slate-500 text-[10px]">
+              In-Person Consultation
+            </span>
+          )}
         </div>
 
         {/* Hospital & Location Details */}

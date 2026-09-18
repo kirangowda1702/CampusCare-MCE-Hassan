@@ -34,12 +34,13 @@ export const AdminDashboard: React.FC = () => {
   const { emergencyHistory, firstAidCentre, emergencyContacts, refreshFirstAidData } = useEmergency();
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [metrics, setMetrics] = useState<PlatformMetrics>({
-    totalRegisteredUsers: 48,
-    totalAppointments: 16,
-    activeDoctors: 5,
+    totalRegisteredUsers: 0,
+    totalAppointments: 0,
+    activeDoctors: 0,
+    availableDoctors: 0,
     activeEmergencyRequests: 0,
     isLiveDatabase: false,
-    dataSourceLabel: 'Prototype Demo Metrics'
+    dataSourceLabel: 'Loading Metrics...'
   });
 
   useEffect(() => {

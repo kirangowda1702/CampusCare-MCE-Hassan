@@ -37,12 +37,13 @@ export const HomePage: React.FC = () => {
   const [isDemoModalOpen, setIsDemoModalOpen] = useState(false);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [metrics, setMetrics] = useState<PlatformMetrics>({
-    totalRegisteredUsers: 48,
-    totalAppointments: 16,
-    activeDoctors: 5,
+    totalRegisteredUsers: 0,
+    totalAppointments: 0,
+    activeDoctors: 0,
+    availableDoctors: 0,
     activeEmergencyRequests: 0,
     isLiveDatabase: false,
-    dataSourceLabel: 'Prototype Demo Metrics'
+    dataSourceLabel: 'Loading Metrics...'
   });
 
   useEffect(() => {
@@ -83,18 +84,18 @@ export const HomePage: React.FC = () => {
               {/* Institutional Badge */}
               <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-primary-100 dark:bg-primary-950/80 border border-primary-200 dark:border-primary-800 text-primary-800 dark:text-primary-300 text-xs font-bold">
                 <ShieldCheck className="w-4 h-4 text-primary-600 dark:text-primary-400" />
-                Malnad College of Engineering • Telemedicine Prototype Platform
+                MCE CampusCare • Malnad College of Engineering, Hassan
               </div>
 
-              <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-slate-900 dark:text-white leading-[1.15]">
-                Campus Healthcare, <br className="hidden sm:inline" />
+              <h1 className="text-3xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-slate-900 dark:text-white leading-[1.15]">
+                CampusCare — <br className="hidden sm:inline" />
                 <span className="bg-gradient-to-r from-primary-600 via-tealAccent-500 to-primary-800 bg-clip-text text-transparent">
-                  Digitized & Connected
+                  Digital Healthcare for MCE Hassan
                 </span>
               </h1>
 
               <p className="text-base sm:text-lg text-slate-600 dark:text-slate-300 max-w-2xl mx-auto lg:mx-0 leading-relaxed">
-                Connect with campus medical practitioners, receive AI-assisted symptom triage guidance, attend encrypted HD video consultations, manage digital prescriptions, and trigger campus emergency alerts directly from your browser.
+                Access campus health services, doctor consultations, AI-assisted health guidance, medical records and emergency support from one secure platform.
               </p>
 
               {/* Call to Actions */}
@@ -110,14 +111,14 @@ export const HomePage: React.FC = () => {
                   to="/symptom-checker"
                   className="px-6 py-3.5 rounded-2xl bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-800 dark:text-white border border-slate-200 dark:border-slate-700 font-bold text-sm shadow-sm transition-all flex items-center gap-2"
                 >
-                  <Sparkles className="w-4 h-4 text-tealAccent-500" /> AI Symptom Guide
+                  <Sparkles className="w-4 h-4 text-tealAccent-500" /> AI Health Guidance
                 </Link>
 
                 <button
                   onClick={() => setIsEmergencyModalOpen(true)}
                   className="px-6 py-3.5 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-sm shadow-lg shadow-rose-600/25 transition-all flex items-center gap-2"
                 >
-                  <ShieldAlert className="w-4 h-4 animate-pulse" /> Campus SOS Alert
+                  <ShieldAlert className="w-4 h-4 animate-pulse" /> Campus Emergency
                 </button>
               </div>
 
@@ -132,11 +133,10 @@ export const HomePage: React.FC = () => {
               </div>
 
               {/* Dynamic Database Metrics Bar */}
-              <div className="pt-6 grid grid-cols-3 gap-4 border-t border-slate-200/80 dark:border-slate-800">
+              <div className="pt-6 grid grid-cols-2 sm:grid-cols-4 gap-4 border-t border-slate-200/80 dark:border-slate-800">
                 <div>
                   <div className="text-2xl font-extrabold text-slate-900 dark:text-white flex items-center gap-1.5 justify-center lg:justify-start">
                     {metrics.totalRegisteredUsers}
-                    {metrics.isLiveDatabase && <span className="text-[10px] text-emerald-500 font-normal">Live</span>}
                   </div>
                   <div className="text-xs text-slate-500 dark:text-slate-400">Registered Users</div>
                 </div>
@@ -144,13 +144,19 @@ export const HomePage: React.FC = () => {
                   <div className="text-2xl font-extrabold text-primary-600 dark:text-primary-400">
                     {metrics.activeDoctors}
                   </div>
-                  <div className="text-xs text-slate-500 dark:text-slate-400">Medical Specialists</div>
+                  <div className="text-xs text-slate-500 dark:text-slate-400">Verified Doctors</div>
                 </div>
                 <div>
                   <div className="text-2xl font-extrabold text-tealAccent-500">
                     {metrics.totalAppointments}
                   </div>
-                  <div className="text-xs text-slate-500 dark:text-slate-400">Appointments Logged</div>
+                  <div className="text-xs text-slate-500 dark:text-slate-400">Total Appointments</div>
+                </div>
+                <div>
+                  <div className="text-2xl font-extrabold text-emerald-600 dark:text-emerald-400">
+                    {metrics.availableDoctors}
+                  </div>
+                  <div className="text-xs text-slate-500 dark:text-slate-400">Available Doctors</div>
                 </div>
               </div>
             </div>

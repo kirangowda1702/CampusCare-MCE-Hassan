@@ -78,7 +78,7 @@ export const SymptomTriage: React.FC = () => {
           <div className="text-amber-900 dark:text-amber-200 space-y-1">
             <p className="font-bold">Medical Safety & Educational Decision-Support Notice:</p>
             <p className="text-[11px] leading-relaxed text-amber-800 dark:text-amber-300">
-              CampusCare AI Symptom Guidance is an educational decision-support feature and does <strong>NOT</strong> provide a definitive medical diagnosis. For life-threatening emergencies, visit HIMS Hassan Trauma Center or dial 108.
+              This tool provides health guidance only and does not replace diagnosis or treatment by a qualified healthcare professional. For life-threatening emergencies, visit HIMS Hassan Trauma Center or dial 108.
             </p>
           </div>
         </div>

@@ -358,77 +358,74 @@ export const HealthcareMap: React.FC<HealthcareMapProps> = ({
           {isGoogleMapsLoaded && !googleMapsError ? (
             <div ref={mapContainerRef} className="w-full h-full" />
           ) : (
-            <div className="w-full h-full p-6 relative flex flex-col justify-between overflow-hidden bg-slate-950 text-white">
-              <div className="absolute inset-0 opacity-20 pointer-events-none bg-[radial-gradient(#38bdf8_1px,transparent_1px)] [background-size:24px_24px]" />
-
-              <div className="relative z-10 flex flex-wrap items-center justify-between gap-2">
-                <div className="bg-slate-900/90 backdrop-blur px-3 py-1.5 rounded-xl border border-slate-800 text-xs font-mono text-slate-300 flex items-center gap-2">
-                  <Compass className="w-4 h-4 text-primary-400" />
-                  <span>Hassan Healthcare Geodesic Grid (13.0076° N, 76.0965° E)</span>
+            <div className="w-full h-full p-6 relative flex flex-col justify-between overflow-y-auto bg-slate-900 text-white">
+              <div className="space-y-4">
+                <div className="p-4 rounded-2xl bg-amber-950/60 border border-amber-800 text-amber-200 text-xs flex items-start gap-3">
+                  <Info className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
+                  <div className="space-y-1">
+                    <p className="font-bold">Google Maps Platform Notice:</p>
+                    <p className="text-[11px] leading-relaxed text-amber-300">
+                      Live Google Maps tiles require <code>VITE_GOOGLE_MAPS_API_KEY</code> to be configured in environment variables. Verified Hassan healthcare coordinates and direct directions links are shown below.
+                    </p>
+                  </div>
                 </div>
-                {googleMapsError && (
-                  <span className="text-[11px] px-2.5 py-1 rounded-lg bg-amber-950/80 text-amber-300 border border-amber-800">
-                    Google Maps API Key Not Configured
-                  </span>
-                )}
-              </div>
 
-              {/* Nodes */}
-              <div className="relative z-10 my-6 flex flex-wrap gap-3 items-center justify-center">
-                {filteredFacilities.map(fac => {
-                  const isSelected = currentSelection?.id === fac.id;
-                  const isCampus = fac.isCampusFacility;
-
-                  return (
-                    <button
-                      key={fac.id}
-                      onClick={() => {
-                        setSelectedFacility(fac);
-                        if (onSelectFacility) onSelectFacility(fac);
-                      }}
-                      className={`flex flex-col items-center transition-all ${
-                        isSelected ? 'scale-110 z-20' : 'hover:scale-105 opacity-90 hover:opacity-100'
-                      }`}
-                    >
-                      <div
-                        className={`w-11 h-11 rounded-2xl flex items-center justify-center shadow-lg border-2 ${
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {filteredFacilities.map(fac => {
+                    const isSelected = currentSelection?.id === fac.id;
+                    const isCampus = fac.isCampusFacility;
+                    const addressStr = fac.address || '';
+                    const hasER = 'emergencyAvailable' in fac ? (fac as any).emergencyAvailable : false;
+                    return (
+                      <button
+                        key={fac.id}
+                        type="button"
+                        onClick={() => setSelectedFacility(fac)}
+                        className={`text-left p-3 rounded-xl border transition flex items-start gap-3 ${
                           isSelected
-                            ? 'bg-primary-500 text-white border-white ring-4 ring-primary-500/30'
-                            : isCampus
-                            ? 'bg-teal-600 text-white border-teal-400'
-                            : fac.facilityType === 'hospital'
-                            ? 'bg-rose-600 text-white border-rose-400'
-                            : fac.facilityType === 'pharmacy'
-                            ? 'bg-emerald-600 text-white border-emerald-400'
-                            : 'bg-purple-600 text-white border-purple-400'
+                            ? 'bg-sky-950/70 border-sky-400 text-white ring-1 ring-sky-400'
+                            : 'bg-slate-800/80 border-slate-700 text-slate-200 hover:bg-slate-800 hover:border-slate-600'
                         }`}
                       >
-                        {isCampus ? (
-                          <Shield className="w-5 h-5" />
-                        ) : fac.facilityType === 'hospital' ? (
-                          <Building2 className="w-5 h-5" />
-                        ) : fac.facilityType === 'pharmacy' ? (
-                          <Pill className="w-5 h-5" />
-                        ) : (
-                          <Activity className="w-5 h-5" />
-                        )}
-                      </div>
-                      <span
-                        className={`mt-1.5 px-2 py-0.5 rounded text-[11px] font-bold max-w-[130px] truncate shadow ${
-                          isSelected
-                            ? 'bg-white text-slate-900'
-                            : 'bg-slate-900/90 text-slate-200 border border-slate-700'
-                        }`}
-                      >
-                        {fac.name.split(' ')[0]}
-                      </span>
-                    </button>
-                  );
-                })}
+                        <div
+                          className={`p-2 rounded-lg flex-shrink-0 ${
+                            isCampus
+                              ? 'bg-teal-600 text-white'
+                              : fac.facilityType === 'hospital'
+                              ? 'bg-rose-600 text-white'
+                              : fac.facilityType === 'pharmacy'
+                              ? 'bg-emerald-600 text-white'
+                              : 'bg-purple-600 text-white'
+                          }`}
+                        >
+                          {isCampus ? (
+                            <Shield className="w-4 h-4" />
+                          ) : fac.facilityType === 'hospital' ? (
+                            <Building2 className="w-4 h-4" />
+                          ) : fac.facilityType === 'pharmacy' ? (
+                            <Pill className="w-4 h-4" />
+                          ) : (
+                            <Activity className="w-4 h-4" />
+                          )}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="font-semibold text-xs truncate">{fac.name}</p>
+                          <p className="text-[11px] text-slate-400 truncate">{addressStr}</p>
+                          <div className="flex items-center gap-2 mt-1 text-[10px] text-slate-300">
+                            <span>{fac.distanceKm?.toFixed(1) || '0.0'} km away</span>
+                            {hasER && (
+                              <span className="text-rose-400 font-medium">24/7 ER</span>
+                            )}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
-              <div className="relative z-10 flex items-center justify-between text-xs text-slate-400 bg-slate-900/80 p-3 rounded-xl border border-slate-800">
-                <span>Select any node to inspect verified Hassan healthcare facility records & launch Google Maps directions</span>
+              <div className="mt-4 flex items-center justify-between text-xs text-slate-400 bg-slate-900/80 p-3 rounded-xl border border-slate-800">
+                <span>Select any facility to inspect details & launch Google Maps directions</span>
                 <span className="text-emerald-400 font-mono text-[11px] font-semibold">Hassan, Karnataka</span>
               </div>
             </div>

@@ -51,7 +51,7 @@ export const Navbar: React.FC = () => {
   const navLinks = [
     { name: 'Services', path: '/services', icon: Layers },
     { name: 'Doctors', path: '/doctors', icon: Stethoscope },
-    { name: 'AI Symptom Guide', path: '/symptom-checker', icon: Sparkles },
+    { name: 'AI Health Guidance', path: '/symptom-checker', icon: Sparkles },
     { name: 'Book Appointment', path: '/appointments/book', icon: Calendar },
     { name: 'Hospitals & Pharmacies', path: '/hospitals', icon: MapPin },
   ];
@@ -113,7 +113,7 @@ export const Navbar: React.FC = () => {
               title="Campus Emergency Response"
             >
               <ShieldAlert className="w-4 h-4" />
-              <span className="hidden xs:inline">SOS Emergency</span>
+              <span className="hidden xs:inline">Campus Emergency</span>
             </button>
 
             {/* Dark / Light Theme Toggle */}
