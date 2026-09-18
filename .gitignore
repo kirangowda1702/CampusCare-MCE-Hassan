@@ -1,0 +1,17 @@
+# Dependencies
+node_modules
+dist
+dist-ssr
+
+# Secrets & Environment
+.env
+.env.local
+.env.*.local
+*.key
+*.pem
+
+# System & IDE
+.DS_Store
+.vscode
+.idea
+scratch/
