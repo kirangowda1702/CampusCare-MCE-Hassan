@@ -63,7 +63,7 @@ export const DoctorDashboard: React.FC = () => {
   const todayStr = new Date().toISOString().split('T')[0];
 
   const doctorAppointments = appointments.filter(
-    a => !user?.doctorId || a.doctorId === user.doctorId || a.doctorId === user.id || a.doctorId === 'DOC001' || a.doctorId === 'DOC002' || a.doctorId === 'doc-1'
+    a => user?.doctorId ? (a.doctorId === user.doctorId || a.doctorId === user.id) : true
   );
 
   const pendingAppointments = doctorAppointments.filter(a => a.status === 'pending');

@@ -7,6 +7,7 @@ interface AuthContextType {
   role: UserRole | null;
   isAuthenticated: boolean;
   loginAsRole: (role: UserRole) => void;
+  loginAsUser: (userId: string) => void;
   loginWithEmail: (email: string, role?: UserRole) => boolean;
   registerUser: (userData: Partial<User>) => void;
   updateProfile: (updatedData: Partial<User>) => void;
@@ -42,18 +43,52 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(matched);
   };
 
+  const loginAsUser = (userId: string) => {
+    const matched = mockUsers.find(u => u.id === userId || u.doctorId === userId);
+    if (matched) {
+      setUser(matched);
+    }
+  };
+
   const loginWithEmail = (email: string, preferredRole?: UserRole): boolean => {
-    const matched = mockUsers.find(u => u.email.toLowerCase() === email.toLowerCase());
+    const cleanEmail = email.trim().toLowerCase();
+    
+    // Direct match by email or doctorId/id
+    const matched = mockUsers.find(u => 
+      u.email.toLowerCase() === cleanEmail || 
+      u.id.toLowerCase() === cleanEmail || 
+      u.doctorId?.toLowerCase() === cleanEmail
+    );
     if (matched) {
       setUser(matched);
       return true;
     }
-    // If unknown email, generate user
+
+    // Check specific doctor mappings
+    if (cleanEmail.includes('kiran') || cleanEmail === 'doc001' || cleanEmail === 'doctor@example.com') {
+      const docKiran = mockUsers.find(u => u.doctorId === 'DOC001');
+      if (docKiran) {
+        setUser(docKiran);
+        return true;
+      }
+    }
+
+    if (cleanEmail.includes('madan') || cleanEmail === 'doc002') {
+      const docMadan = mockUsers.find(u => u.doctorId === 'DOC002');
+      if (docMadan) {
+        setUser(docMadan);
+        return true;
+      }
+    }
+
+    // If unknown email, generate user with appropriate role and doctorId if doctor
+    const isDoc = preferredRole === 'doctor';
     const newUser: User = {
       id: 'usr-custom-' + Date.now(),
       email,
       fullName: email.split('@')[0].replace('.', ' ').toUpperCase(),
       role: preferredRole || 'student',
+      doctorId: isDoc ? 'DOC001' : undefined,
       phone: '+91 98450 ' + Math.floor(10000 + Math.random() * 90000),
       createdAt: new Date().toISOString(),
       usn: preferredRole === 'student' ? '4MC22CS' + Math.floor(100 + Math.random() * 899) : undefined,
@@ -93,6 +128,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         role: user?.role || null,
         isAuthenticated: !!user,
         loginAsRole,
+        loginAsUser,
         loginWithEmail,
         registerUser,
         updateProfile,

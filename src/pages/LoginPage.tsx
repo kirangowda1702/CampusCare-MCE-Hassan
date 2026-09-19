@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { UserRole } from '../types';
 
 export const LoginPage: React.FC = () => {
-  const { loginAsRole, loginWithEmail } = useAuth();
+  const { loginAsRole, loginAsUser, loginWithEmail } = useAuth();
   const navigate = useNavigate();
 
   const [email, setEmail] = useState('');
@@ -16,12 +16,13 @@ export const LoginPage: React.FC = () => {
   const handleCustomLogin = (e: React.FormEvent) => {
     e.preventDefault();
     if (!email) {
-      setError('Please enter your MCE email');
+      setError('Please enter your MCE email or Doctor ID');
       return;
     }
     loginWithEmail(email, selectedRole);
-    if (selectedRole === 'doctor') navigate('/doctor/dashboard');
-    else if (selectedRole === 'admin') navigate('/admin/dashboard');
+    if (selectedRole === 'doctor' || email.toLowerCase().includes('doctor') || email.toLowerCase().includes('kiran') || email.toLowerCase().includes('madan')) {
+      navigate('/doctor/dashboard');
+    } else if (selectedRole === 'admin') navigate('/admin/dashboard');
     else if (selectedRole === 'faculty') navigate('/faculty/dashboard');
     else navigate('/student/dashboard');
   };
@@ -32,6 +33,11 @@ export const LoginPage: React.FC = () => {
     else if (role === 'admin') navigate('/admin/dashboard');
     else if (role === 'faculty') navigate('/faculty/dashboard');
     else navigate('/student/dashboard');
+  };
+
+  const handleDoctorLogin = (userId: string) => {
+    loginAsUser(userId);
+    navigate('/doctor/dashboard');
   };
 
   return (
@@ -60,25 +66,25 @@ export const LoginPage: React.FC = () => {
               onClick={() => handleQuickDemo('student')}
               className="py-2 px-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-primary-500 text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5 shadow-sm transition-all text-left"
             >
-              <GraduationCap className="w-3.5 h-3.5 text-blue-500" /> Student
+              <GraduationCap className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" /> Student (Rahul)
             </button>
             <button
-              onClick={() => handleQuickDemo('doctor')}
+              onClick={() => handleDoctorLogin('usr-doctor-kiran')}
               className="py-2 px-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-primary-500 text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5 shadow-sm transition-all text-left"
             >
-              <Stethoscope className="w-3.5 h-3.5 text-emerald-500" /> Doctor
+              <Stethoscope className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0" /> Dr. Kiran (DOC001)
             </button>
             <button
-              onClick={() => handleQuickDemo('faculty')}
+              onClick={() => handleDoctorLogin('usr-doctor-madan')}
               className="py-2 px-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-primary-500 text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5 shadow-sm transition-all text-left"
             >
-              <BookOpen className="w-3.5 h-3.5 text-purple-500" /> Faculty
+              <Stethoscope className="w-3.5 h-3.5 text-teal-500 flex-shrink-0" /> Dr. Madan (DOC002)
             </button>
             <button
               onClick={() => handleQuickDemo('admin')}
               className="py-2 px-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-primary-500 text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5 shadow-sm transition-all text-left"
             >
-              <ShieldCheck className="w-3.5 h-3.5 text-amber-500" /> Admin
+              <ShieldCheck className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" /> Admin
             </button>
           </div>
         </div>

@@ -31,13 +31,16 @@ export const VideoConsultationPage: React.FC = () => {
     );
   }
 
-  // Access Control Guard
-  const isAuthorized = 
-    role === 'admin' ||
-    user?.id === appointment.patientId ||
-    user?.id === appointment.doctorId ||
-    user?.doctorId === appointment.doctorId ||
-    role === 'doctor';
+  // Access Control Guard: Student can join only own appointment, Doctor can join only assigned appointment
+  const isStudentOwner = (role === 'student' || !role) && (user?.id === appointment.patientId || user?.email === appointment.patientEmail);
+  const isAssignedDoctor = role === 'doctor' && (
+    !user?.doctorId || 
+    user?.doctorId === appointment.doctorId || 
+    user?.id === appointment.doctorId
+  );
+  const isAdmin = role === 'admin';
+
+  const isAuthorized = isStudentOwner || isAssignedDoctor || isAdmin;
 
   const isStatusPermitted = 
     appointment.status === 'confirmed' || 
