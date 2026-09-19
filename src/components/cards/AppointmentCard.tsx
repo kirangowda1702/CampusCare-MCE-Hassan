@@ -10,6 +10,7 @@ interface AppointmentCardProps {
   onCancel?: (id: string) => void;
   onAccept?: (id: string) => void;
   onReject?: (id: string) => void;
+  onViewPatient?: (appointment: Appointment) => void;
   onStartConsultation?: (id: string) => void;
   onComplete?: (id: string) => void;
   onReschedule?: (id: string) => void;
@@ -21,6 +22,7 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({
   onCancel,
   onAccept,
   onReject,
+  onViewPatient,
   onStartConsultation,
   onComplete,
   onReschedule
@@ -29,6 +31,16 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({
   const isPending = appointment.status === 'pending';
   const isConfirmed = appointment.status === 'confirmed';
   const isInProgress = appointment.status === 'in_progress';
+
+  const bookingTimestamp = appointment.createdAt
+    ? new Date(appointment.createdAt).toLocaleDateString([], {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      })
+    : 'Recently';
 
   return (
     <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 p-5 shadow-sm hover:shadow-md transition-all">
@@ -45,8 +57,8 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({
           </h4>
           <p className="text-xs text-primary-600 dark:text-primary-400 font-medium">
             {isDoctorView
-              ? `USN/ID: ${appointment.patientUSNorEmpId || 'MCE Member'}`
-              : appointment.doctorSpecialization}
+              ? `USN/ID: ${appointment.patientUSNorEmpId || 'MCE Member'} • ${appointment.serviceName}`
+              : `${appointment.doctorSpecialization} • ${appointment.serviceName}`}
           </p>
         </div>
 
@@ -68,6 +80,9 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({
           <span className="font-semibold text-slate-700 dark:text-slate-300">Reason: </span>
           {appointment.reason}
         </div>
+        <div className="col-span-2 text-[11px] text-slate-400">
+          <span>Booked: {bookingTimestamp}</span>
+        </div>
       </div>
 
       <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-100 dark:border-slate-800 flex-wrap">
@@ -80,20 +95,32 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({
 
         <div className="flex items-center gap-2 flex-wrap">
           {/* Doctor Actions */}
-          {isDoctorView && isPending && onAccept && onReject && (
+          {isDoctorView && isPending && (
             <>
-              <button
-                onClick={() => onReject(appointment.id)}
-                className="px-3 py-1.5 rounded-lg border border-rose-200 dark:border-rose-800 text-rose-600 text-xs font-semibold hover:bg-rose-50 dark:hover:bg-rose-950/50 transition-colors"
-              >
-                Decline
-              </button>
-              <button
-                onClick={() => onAccept(appointment.id)}
-                className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700 transition-colors shadow"
-              >
-                Accept
-              </button>
+              {onViewPatient && (
+                <button
+                  onClick={() => onViewPatient(appointment)}
+                  className="px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                >
+                  View Patient
+                </button>
+              )}
+              {onReject && (
+                <button
+                  onClick={() => onReject(appointment.id)}
+                  className="px-3 py-1.5 rounded-lg border border-rose-200 dark:border-rose-800 text-rose-600 text-xs font-semibold hover:bg-rose-50 dark:hover:bg-rose-950/50 transition-colors"
+                >
+                  Reject
+                </button>
+              )}
+              {onAccept && (
+                <button
+                  onClick={() => onAccept(appointment.id)}
+                  className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700 transition-colors shadow"
+                >
+                  Accept
+                </button>
+              )}
             </>
           )}
 
@@ -121,7 +148,7 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({
               to={`/consultation/${appointment.id}`}
               className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-primary-600 hover:bg-primary-700 text-white text-xs font-semibold shadow transition-all animate-pulse-subtle"
             >
-              <Video className="w-3.5 h-3.5" /> Join Teleconsultation
+              <Video className="w-3.5 h-3.5" /> Join Video Consultation
             </Link>
           )}
 

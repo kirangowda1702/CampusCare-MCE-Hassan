@@ -98,8 +98,8 @@ export const appointmentService = {
       });
       await notificationService.notifyAppointmentEvent({
         userId: newApt.doctorId,
-        title: 'New Consultation Request',
-        message: `New consultation request from ${newApt.patientName} for ${newApt.appointmentDate} at ${newApt.timeSlot}.`,
+        title: 'New Appointment Request',
+        message: `New appointment request from ${newApt.patientName}`,
         type: 'appointment',
         link: `/appointments/${newApt.id}`
       });
@@ -137,21 +137,25 @@ export const appointmentService = {
 
     // Send notifications based on status change
     if (target) {
+      const docName = target.doctorName.startsWith('Dr.') || target.doctorName.startsWith('Dr ')
+        ? target.doctorName
+        : `Dr. ${target.doctorName}`;
+
       let statusTitle = `Appointment ${status.toUpperCase()}`;
-      let statusMsg = `Your appointment (${target.bookingId}) with ${target.doctorName} on ${target.appointmentDate} is now marked as ${status}.`;
+      let statusMsg = `Your appointment (${target.bookingId}) with ${docName} on ${target.appointmentDate} is now marked as ${status}.`;
 
       if (status === 'confirmed') {
         statusTitle = 'Appointment Confirmed';
-        statusMsg = `Dr. ${target.doctorName} accepted your consultation for ${target.appointmentDate} at ${target.timeSlot}.`;
+        statusMsg = `Your appointment with ${docName} has been confirmed.`;
       } else if (status === 'rejected') {
-        statusTitle = 'Appointment Declined';
-        statusMsg = `Your consultation request with Dr. ${target.doctorName} could not be confirmed. Please pick another available slot.`;
+        statusTitle = 'Appointment Rejected';
+        statusMsg = 'Your appointment request was rejected.';
       } else if (status === 'in_progress') {
         statusTitle = 'Consultation Started';
-        statusMsg = `Dr. ${target.doctorName} has started the consultation session. Click to join video room.`;
+        statusMsg = `${docName} has started the consultation session. Click to join video room.`;
       } else if (status === 'completed') {
         statusTitle = 'Consultation Completed';
-        statusMsg = `Your consultation with Dr. ${target.doctorName} has ended. Review your prescription and medical records.`;
+        statusMsg = `Your consultation with ${docName} has ended. Review your prescription and medical records.`;
       }
 
       try {
