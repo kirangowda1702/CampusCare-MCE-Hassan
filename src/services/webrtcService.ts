@@ -39,6 +39,7 @@ export function isTurnConfigured(): boolean {
 
 export type SignalType = 
   | 'peer-joined' 
+  | 'peer-presence'
   | 'offer' 
   | 'answer' 
   | 'candidate' 
@@ -48,6 +49,7 @@ export type SignalType =
   | 'ping';
 
 export interface SignalPayload {
+  msgId?: string;
   type: SignalType;
   data?: any;
   senderId: string;
@@ -61,71 +63,182 @@ export type SignalingCallback = (payload: SignalPayload) => void;
 export class RealtimeSignalingChannel {
   private channelName: string;
   private channel: any = null;
+  private broadcastChannel: BroadcastChannel | null = null;
   private onMessageCallback: SignalingCallback | null = null;
   private currentUserId: string;
   private currentUserRole?: string;
   private currentUserName?: string;
+  private isSubscribed: boolean = false;
+  private outboxQueue: SignalPayload[] = [];
+  private seenMessageIds: Set<string> = new Set();
 
   constructor(appointmentId: string, currentUserId: string, currentUserRole?: string, currentUserName?: string) {
+    // Canonical room channel name based on appointment identifier
     this.channelName = `teleconsultation:${appointmentId}`;
     this.currentUserId = currentUserId;
     this.currentUserRole = currentUserRole;
     this.currentUserName = currentUserName;
+
+    // Local BroadcastChannel for same-origin multi-tab/window testing
+    if (typeof BroadcastChannel !== 'undefined') {
+      try {
+        this.broadcastChannel = new BroadcastChannel(this.channelName);
+        this.broadcastChannel.onmessage = (event) => {
+          if (event && event.data) {
+            this.handleIncomingPayload(event.data, 'BroadcastChannel');
+          }
+        };
+      } catch (err) {
+        console.warn('[WebRTC Signaling] BroadcastChannel unavailable:', err);
+      }
+    }
+  }
+
+  private handleIncomingPayload(payload: SignalPayload, source: string) {
+    if (!payload || payload.senderId === this.currentUserId) return;
+    
+    // Deduplication check
+    if (payload.msgId) {
+      if (this.seenMessageIds.has(payload.msgId)) return;
+      this.seenMessageIds.add(payload.msgId);
+      if (this.seenMessageIds.size > 200) {
+        const first = this.seenMessageIds.values().next().value;
+        if (first) this.seenMessageIds.delete(first);
+      }
+    }
+
+    console.log(`[WebRTC Signaling via ${source}] Received signal:`, payload.type, 'from:', payload.senderName || payload.senderId);
+    if (this.onMessageCallback) {
+      this.onMessageCallback(payload);
+    }
   }
 
   public subscribe(callback: SignalingCallback) {
     this.onMessageCallback = callback;
 
     if (isSupabaseConfigured) {
-      this.channel = supabase.channel(this.channelName, {
-        config: { broadcast: { self: false } }
-      });
-
-      this.channel
-        .on('broadcast', { event: 'signal' }, (event: any) => {
-          if (this.onMessageCallback && event.payload) {
-            this.onMessageCallback(event.payload);
-          }
-        })
-        .subscribe((status: string) => {
-          if (status === 'SUBSCRIBED') {
-            // Broadcast initial presence announcement
-            this.sendSignal('peer-joined', {
-              userId: this.currentUserId,
-              role: this.currentUserRole,
-              name: this.currentUserName
-            });
-          }
+      try {
+        this.channel = supabase.channel(this.channelName, {
+          config: { broadcast: { self: false } }
         });
+
+        this.channel
+          .on('broadcast', { event: 'signal' }, (event: any) => {
+            if (event?.payload) {
+              this.handleIncomingPayload(event.payload, 'Supabase Realtime');
+            }
+          })
+          .subscribe((status: string, err?: any) => {
+            console.log(`[WebRTC] Supabase Realtime subscription status [${this.channelName}]:`, status, err || '');
+            if (status === 'SUBSCRIBED') {
+              this.isSubscribed = true;
+              
+              // Flush any queued signals
+              while (this.outboxQueue.length > 0) {
+                const queued = this.outboxQueue.shift();
+                if (queued) {
+                  this.dispatchSupabaseSignal(queued);
+                }
+              }
+
+              // Broadcast presence to room
+              this.sendSignal('peer-joined', {
+                userId: this.currentUserId,
+                role: this.currentUserRole,
+                name: this.currentUserName
+              });
+            } else if (status === 'TIMED_OUT' || status === 'CHANNEL_ERROR') {
+              console.warn(`[WebRTC] Supabase Realtime subscription issue (${status}). Retrying channel...`);
+            }
+          });
+      } catch (err) {
+        console.warn('[WebRTC] Error configuring Supabase Realtime channel:', err);
+      }
+    } else {
+      console.log('[WebRTC] Supabase Realtime not configured. Operating via local WebRTC BroadcastChannel.');
+      // Immediate presence on local broadcast channel
+      setTimeout(() => {
+        this.sendSignal('peer-joined', {
+          userId: this.currentUserId,
+          role: this.currentUserRole,
+          name: this.currentUserName
+        });
+      }, 100);
     }
   }
 
-  public sendSignal(type: SignalType, data?: any) {
+  private dispatchSupabaseSignal(payload: SignalPayload) {
     if (this.channel && isSupabaseConfigured) {
       this.channel.send({
         type: 'broadcast',
         event: 'signal',
-        payload: {
-          type,
-          data,
-          senderId: this.currentUserId,
-          senderRole: this.currentUserRole,
-          senderName: this.currentUserName,
-          timestamp: new Date().toISOString()
-        } as SignalPayload
+        payload
+      }).catch((e: any) => {
+        console.warn('[WebRTC] Supabase broadcast send error:', e);
       });
     }
   }
 
+  public sendSignal(type: SignalType, data?: any) {
+    const payload: SignalPayload = {
+      msgId: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+      type,
+      data,
+      senderId: this.currentUserId,
+      senderRole: this.currentUserRole,
+      senderName: this.currentUserName,
+      timestamp: new Date().toISOString()
+    };
+
+    if (payload.msgId) {
+      this.seenMessageIds.add(payload.msgId);
+    }
+
+    console.log('[WebRTC Signaling] Sending signal:', type, 'sender:', this.currentUserName || this.currentUserId);
+
+    // 1. Send via local BroadcastChannel
+    if (this.broadcastChannel) {
+      try {
+        this.broadcastChannel.postMessage(payload);
+      } catch (err) {
+        console.warn('[WebRTC] BroadcastChannel send error:', err);
+      }
+    }
+
+    // 2. Send via Supabase Realtime
+    if (isSupabaseConfigured) {
+      if (this.isSubscribed) {
+        this.dispatchSupabaseSignal(payload);
+      } else {
+        this.outboxQueue.push(payload);
+      }
+    }
+  }
+
   public unsubscribe() {
+    try {
+      this.sendSignal('peer-left', { userId: this.currentUserId });
+    } catch (e) {
+      // ignore
+    }
+
+    if (this.broadcastChannel) {
+      try {
+        this.broadcastChannel.close();
+        this.broadcastChannel = null;
+      } catch (e) {
+        // ignore
+      }
+    }
+
     if (this.channel && isSupabaseConfigured) {
       try {
-        this.sendSignal('peer-left', { userId: this.currentUserId });
+        supabase.removeChannel(this.channel);
       } catch (e) {
-        // channel may already be closing
+        // ignore
       }
-      supabase.removeChannel(this.channel);
       this.channel = null;
+      this.isSubscribed = false;
     }
   }
 }
