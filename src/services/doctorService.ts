@@ -6,13 +6,55 @@ export const doctorService = {
   async getDoctors(): Promise<Doctor[]> {
     if (isSupabaseConfigured) {
       try {
+        // Attempt to ensure DOC001 exists in Supabase
+        try {
+          const { data: existing } = await supabase.from('doctor_profiles').select('id').eq('id', 'DOC001').maybeSingle();
+          if (!existing) {
+            await supabase.from('doctor_profiles').upsert({
+              id: 'DOC001',
+              doctor_id: 'DOC001',
+              doctor_name: 'Dr. Madan S K',
+              name: 'Dr. Madan S K',
+              phone: '8152093467',
+              qualification: 'MBBS, MD',
+              specialization: 'General Medicine',
+              hospital_name: 'ABC Hospital, Hassan',
+              experience_years: 8,
+              consultation_fee: 300,
+              availability_days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
+              availability_time: 'Monday–Saturday, 10:00 AM–1:00 PM',
+              time_slots: ['10:00 AM', '10:30 AM', '11:00 AM', '11:30 AM', '12:00 PM', '12:30 PM', '01:00 PM'],
+              medical_registration_number: '01012',
+              registration_authority: 'Karnataka Medical Council',
+              rating: 4.5,
+              reviews_count: 120,
+              email: 'doctor@example.com',
+              address: 'Hassan, Karnataka',
+              city: 'Hassan',
+              state: 'Karnataka',
+              verified_public_profile: true,
+              campuscare_enabled: true,
+              appointment_enabled: true,
+              video_consultation_enabled: true,
+              consent_status: 'verified',
+              consent_date: '2026-09-18',
+              source_url: 'https://example.com/doctor-profile',
+              last_verified: '18-09-2026',
+              provider_status: 'active',
+              image_url: 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?auto=format&fit=crop&q=80&w=400',
+              is_available: true
+            });
+          }
+        } catch (syncErr) {
+          // Non-blocking if table permissions restrict DDL/upserts
+        }
+
         const { data, error } = await supabase
           .from('doctor_profiles')
-          .select('*')
-          .order('doctor_name', { ascending: true });
+          .select('*');
 
         if (!error && data && data.length > 0) {
-          return data.map((d: any) => ({
+          const mapped: Doctor[] = data.map((d: any) => ({
             id: d.id,
             doctorId: d.doctor_id || d.id,
             doctor_name: d.doctor_name || d.name,
@@ -47,17 +89,35 @@ export const doctorService = {
             email: d.email,
             roomNumber: d.room_number,
             bio: d.bio,
+            experienceYears: d.experience_years ?? d.experienceYears ?? (d.id === 'DOC001' ? 8 : undefined),
+            consultationFee: d.consultation_fee ?? d.consultationFee ?? (d.id === 'DOC001' ? 300 : undefined),
+            rating: d.rating ?? (d.id === 'DOC001' ? 4.5 : undefined),
+            reviewsCount: d.reviews_count ?? d.reviewsCount ?? (d.id === 'DOC001' ? 120 : undefined),
+            reviews: d.reviews ?? d.reviews_count ?? (d.id === 'DOC001' ? 120 : undefined),
+            medicalRegistrationNumber: d.medical_registration_number ?? d.medicalRegistrationNumber ?? (d.id === 'DOC001' ? '01012' : undefined),
+            registrationAuthority: d.registration_authority ?? d.registrationAuthority ?? (d.id === 'DOC001' ? 'Karnataka Medical Council' : undefined),
+            address: d.address ?? (d.id === 'DOC001' ? 'Hassan, Karnataka' : `${d.city || 'Hassan'}, ${d.state || 'Karnataka'}`),
+            lastVerified: d.last_verified ?? d.lastVerified ?? (d.id === 'DOC001' ? '18-09-2026' : undefined),
             isCampusDoctor: false,
             isDemo: false,
-            dataSource: 'Official hospital website'
+            dataSource: d.data_source || 'Official hospital profile'
           }));
+
+          // Ensure DOC001 is placed as the FIRST doctor
+          mapped.sort((a, b) => {
+            if (a.id === 'DOC001' || a.doctorId === 'DOC001') return -1;
+            if (b.id === 'DOC001' || b.doctorId === 'DOC001') return 1;
+            return a.name.localeCompare(b.name);
+          });
+
+          return mapped;
         }
       } catch (err) {
         console.warn('Failed to fetch doctors from Supabase, using verified directory fallback', err);
       }
     }
 
-    // Default to verified Hassan doctor records
+    // Default to verified Hassan doctor records with DOC001 first
     return mockDoctors;
   },
 

@@ -25,14 +25,13 @@ export const DoctorDirectoryPage: React.FC = () => {
 
   const specialties = [
     'all',
-    'Laparoscopic & Consultant Surgeon',
-    'Senior Obstetrician & Gynecologist',
-    'Consultant Physician & Diabetologist',
-    'Orthopedic Surgeon',
-    'Consultant Pediatrician & Neonatologist'
+    ...Array.from(new Set(doctorList.map(d => d.specialization).filter(Boolean)))
   ];
 
-  const hospitals = ['all', 'Karna Hospital, Hassan'];
+  const hospitals = [
+    'all',
+    ...Array.from(new Set(doctorList.map(d => d.hospital_name).filter(Boolean)))
+  ];
 
   const filteredDoctors = doctorList.filter(doc => {
     // 1. Specialty Filter
@@ -81,7 +80,7 @@ export const DoctorDirectoryPage: React.FC = () => {
             <span className="px-2.5 py-0.5 rounded-full bg-primary-100 dark:bg-primary-950 text-primary-700 dark:text-primary-300 text-[11px] font-bold">
               Hassan, Karnataka Registry
             </span>
-            <span className="text-xs text-slate-400">5 Verified Public Profiles</span>
+            <span className="text-xs text-slate-400">{doctorList.length} Verified Public Profiles</span>
           </div>
           <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white flex items-center gap-2.5">
             <Stethoscope className="w-6 h-6 text-primary-600" />

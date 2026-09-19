@@ -126,11 +126,15 @@ export interface Doctor {
   phone?: string;
   email?: string;
   roomNumber?: string;
-  bio?: string;
   experienceYears?: number;
   rating?: number;
   reviewsCount?: number;
+  reviews?: number;
   consultationFee?: number;
+  medicalRegistrationNumber?: string;
+  registrationAuthority?: string;
+  address?: string;
+  lastVerified?: string;
   isCampusDoctor?: boolean;
   isDemo?: boolean;
   dataSource?: string;

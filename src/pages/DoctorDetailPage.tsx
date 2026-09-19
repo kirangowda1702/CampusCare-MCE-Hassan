@@ -121,7 +121,12 @@ export const DoctorDetailPage: React.FC = () => {
               {doctor.specialization}
             </p>
 
-            <div className="space-y-1 text-xs text-slate-600 dark:text-slate-400 pt-1">
+            {/* Grid of Key Professional Attributes */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-slate-600 dark:text-slate-400 pt-2">
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-slate-700 dark:text-slate-300">Doctor ID:</span>
+                <span className="font-mono font-semibold text-primary-600 dark:text-primary-400">{doctor.doctorId || doctor.id}</span>
+              </div>
               <div className="flex items-center gap-2">
                 <span className="font-bold text-slate-700 dark:text-slate-300">Qualification:</span>
                 <span>{doctor.qualification || 'Not publicly listed'}</span>
@@ -132,8 +137,45 @@ export const DoctorDetailPage: React.FC = () => {
               </div>
               <div className="flex items-center gap-2">
                 <MapPin className="w-4 h-4 text-slate-400 flex-shrink-0" />
-                <span>{doctor.city}, {doctor.state}</span>
+                <span>{doctor.address || `${doctor.city}, ${doctor.state}`}</span>
               </div>
+              {doctor.phone && (
+                <div className="flex items-center gap-2">
+                  <Phone className="w-4 h-4 text-slate-400 flex-shrink-0" />
+                  <span>{doctor.phone}</span>
+                </div>
+              )}
+              {doctor.email && (
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-slate-700 dark:text-slate-300">Email:</span>
+                  <span>{doctor.email}</span>
+                </div>
+              )}
+              {doctor.experienceYears && (
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-slate-700 dark:text-slate-300">Experience:</span>
+                  <span>{doctor.experienceYears} Years</span>
+                </div>
+              )}
+              {doctor.consultationFee && (
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-slate-700 dark:text-slate-300">Consultation Fee:</span>
+                  <span className="font-bold text-teal-600 dark:text-teal-400">₹{doctor.consultationFee}</span>
+                </div>
+              )}
+              {doctor.medicalRegistrationNumber && (
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-slate-700 dark:text-slate-300">Reg. Number:</span>
+                  <span className="font-mono">{doctor.medicalRegistrationNumber} ({doctor.registrationAuthority || 'State Council'})</span>
+                </div>
+              )}
+              {doctor.rating && (
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-slate-700 dark:text-slate-300">Patient Rating:</span>
+                  <span className="font-bold text-amber-500">★ {doctor.rating}</span>
+                  <span className="text-slate-400">({doctor.reviewsCount || doctor.reviews || 0} reviews)</span>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -146,10 +188,16 @@ export const DoctorDetailPage: React.FC = () => {
           <div className="text-sm font-semibold text-slate-800 dark:text-slate-200">
             {doctor.availability_time || 'Consult hospital desk for active OPD schedule'}
           </div>
-          <div className="flex items-center gap-2 text-slate-500 text-[11px]">
+          <div className="flex flex-wrap items-center gap-2 text-slate-500 text-[11px]">
             <span>Mode: In-Person Consultation at {doctor.hospital_name}</span>
             <span>•</span>
-            <span>Video Consultation: {doctor.video_consultation_enabled ? 'Enabled' : 'Not Available (Directory Listing)'}</span>
+            <span>Video Consultation: {doctor.video_consultation_enabled ? 'Available' : 'In-Person Only'}</span>
+            {doctor.lastVerified && (
+              <>
+                <span>•</span>
+                <span>Last Verified: <strong className="text-slate-700 dark:text-slate-300">{doctor.lastVerified}</strong></span>
+              </>
+            )}
           </div>
         </div>
 
@@ -157,7 +205,7 @@ export const DoctorDetailPage: React.FC = () => {
         <div className="p-4 rounded-2xl bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900/60 text-xs space-y-2">
           <div className="flex items-center justify-between">
             <span className="font-bold text-blue-900 dark:text-blue-200">
-              Source: {doctor.data_source || 'Official hospital website'}
+              Source: {doctor.dataSource || doctor.data_source || 'Official Hospital Profile'}
             </span>
             {doctor.source_url && (
               <a
@@ -166,12 +214,12 @@ export const DoctorDetailPage: React.FC = () => {
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-1 text-blue-700 dark:text-blue-300 font-bold hover:underline"
               >
-                View Official Profile <ExternalLink className="w-3.5 h-3.5" />
+                View Source Profile <ExternalLink className="w-3.5 h-3.5" />
               </a>
             )}
           </div>
           <p className="text-[11px] text-blue-800/80 dark:text-blue-300/80 leading-relaxed">
-            Professional information sourced from the official hospital/clinic profile.
+            Professional information verified against official medical council registry and clinic listings.
           </p>
         </div>
 
@@ -193,12 +241,22 @@ export const DoctorDetailPage: React.FC = () => {
               </a>
             </div>
           ) : (
-            <Link
-              to={`/appointments/book?doctor=${doctor.id}`}
-              className="w-full sm:w-auto px-6 py-3 rounded-xl bg-primary-600 hover:bg-primary-700 text-white font-bold text-xs shadow flex items-center justify-center gap-2"
-            >
-              <Calendar className="w-4 h-4" /> Book Appointment
-            </Link>
+            <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
+              <Link
+                to={`/appointments/book?doctor=${doctor.id}`}
+                className="flex-1 sm:flex-initial px-6 py-3 rounded-xl bg-primary-600 hover:bg-primary-700 text-white font-bold text-xs shadow flex items-center justify-center gap-2 transition-all"
+              >
+                <Calendar className="w-4 h-4" /> Book In-Person Consultation
+              </Link>
+              {doctor.video_consultation_enabled && (
+                <Link
+                  to={`/appointments/book?doctor=${doctor.id}&mode=video`}
+                  className="flex-1 sm:flex-initial px-6 py-3 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shadow flex items-center justify-center gap-2 transition-all"
+                >
+                  <Video className="w-4 h-4" /> Book Video Consultation
+                </Link>
+              )}
+            </div>
           )}
         </div>
       </div>

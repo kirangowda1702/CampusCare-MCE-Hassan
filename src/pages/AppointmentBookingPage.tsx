@@ -29,28 +29,35 @@ export const AppointmentBookingPage: React.FC = () => {
 
   const preselectedDoctorId = searchParams.get('doctor');
   const preselectedServiceId = searchParams.get('service');
+  const preselectedMode = searchParams.get('mode');
 
   const [step, setStep] = useState(1);
   const [selectedService, setSelectedService] = useState<HealthService | null>(null);
   const [selectedDoctor, setSelectedDoctor] = useState<Doctor | null>(null);
   const [selectedDate, setSelectedDate] = useState<string>('2026-09-18');
-  const [selectedSlot, setSelectedSlot] = useState<string>('09:30 AM');
-  const [selectedStartTime, setSelectedStartTime] = useState<string>('09:30');
-  const [selectedEndTime, setSelectedEndTime] = useState<string>('10:00');
+  const [selectedSlot, setSelectedSlot] = useState<string>('10:00 AM');
+  const [selectedStartTime, setSelectedStartTime] = useState<string>('10:00');
+  const [selectedEndTime, setSelectedEndTime] = useState<string>('10:30');
   const [generatedSlots, setGeneratedSlots] = useState<GeneratedSlot[]>([]);
   const [loadingSlots, setLoadingSlots] = useState<boolean>(false);
   const [bookingError, setBookingError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
-  const [consultationType, setConsultationType] = useState<ConsultationType>('video');
+  const [consultationType, setConsultationType] = useState<ConsultationType>(preselectedMode === 'in_person' ? 'in_person' : 'video');
   const [reason, setReason] = useState('');
   const [symptoms, setSymptoms] = useState<string[]>([]);
   const [confirmedAppointment, setConfirmedAppointment] = useState<Appointment | null>(null);
 
   useEffect(() => {
+    if (preselectedMode === 'video' || preselectedMode === 'in_person') {
+      setConsultationType(preselectedMode as ConsultationType);
+    }
+  }, [preselectedMode]);
+
+  useEffect(() => {
     doctorService.getDoctors().then(docs => {
       setAvailableDoctors(docs);
       if (preselectedDoctorId) {
-        const doc = docs.find(d => d.id === preselectedDoctorId);
+        const doc = docs.find(d => d.id === preselectedDoctorId || d.doctorId === preselectedDoctorId);
         if (doc) {
           setSelectedDoctor(doc);
           const srv = mockServices.find(s => s.name.toLowerCase().includes(doc.specialization.split(' ')[0].toLowerCase())) || mockServices[0];

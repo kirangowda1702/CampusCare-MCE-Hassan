@@ -76,27 +76,48 @@ export const DoctorCard: React.FC<DoctorCardProps> = ({ doctor, onBook }) => {
           )}
         </div>
 
-        {/* Hospital & Location Details */}
+        {/* Experience, Rating, Fee & Location Details */}
         <div className="space-y-1.5 py-2.5 border-y border-slate-100 dark:border-slate-800 text-xs mb-3">
-          <div className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300">
-            <Building2 className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
-            <span className="truncate font-semibold">{doctor.hospital_name || 'Karna Hospital, Hassan'}</span>
+          <div className="flex items-center justify-between text-slate-700 dark:text-slate-300">
+            <div className="flex items-center gap-1.5">
+              <Building2 className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+              <span className="truncate font-semibold">{doctor.hospital_name || 'ABC Hospital, Hassan'}</span>
+            </div>
+            {doctor.consultationFee && (
+              <span className="font-bold text-teal-600 dark:text-teal-400 bg-teal-50 dark:bg-teal-950/60 px-2 py-0.5 rounded text-[11px]">
+                ₹{doctor.consultationFee}
+              </span>
+            )}
           </div>
 
-          <div className="flex items-center gap-1.5 text-slate-600 dark:text-slate-400">
-            <MapPin className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
-            <span className="truncate">{doctor.city || 'Hassan'}, {doctor.state || 'Karnataka'}</span>
+          <div className="flex items-center justify-between text-slate-600 dark:text-slate-400 text-[11px]">
+            <div className="flex items-center gap-1.5">
+              <MapPin className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+              <span className="truncate">{doctor.address || `${doctor.city || 'Hassan'}, ${doctor.state || 'Karnataka'}`}</span>
+            </div>
+            {doctor.experienceYears && (
+              <span className="font-medium text-slate-500 dark:text-slate-400">
+                {doctor.experienceYears} Yrs Exp
+              </span>
+            )}
           </div>
 
-          <div className="flex items-center gap-1.5 text-slate-600 dark:text-slate-400">
-            <Clock className="w-3.5 h-3.5 text-primary-500 flex-shrink-0" />
-            <span className="truncate text-[11px]">{doctor.availability_time || doctor.availableDays.join(', ')}</span>
+          <div className="flex items-center justify-between text-slate-600 dark:text-slate-400">
+            <div className="flex items-center gap-1.5">
+              <Clock className="w-3.5 h-3.5 text-primary-500 flex-shrink-0" />
+              <span className="truncate text-[11px]">{doctor.availability_time || doctor.availableDays.join(', ')}</span>
+            </div>
+            {doctor.rating && (
+              <span className="font-bold text-amber-500 text-[11px] flex items-center gap-0.5">
+                ★ {doctor.rating} <span className="font-normal text-slate-400 text-[10px]">({doctor.reviewsCount || doctor.reviews || 0})</span>
+              </span>
+            )}
           </div>
         </div>
 
         {/* Source Attribution Link */}
         <div className="flex items-center justify-between text-[11px] text-slate-400 mb-3">
-          <span>Source: Official Hospital Profile</span>
+          <span>Source: {doctor.dataSource || doctor.data_source || 'Official Profile'}</span>
           {doctor.source_url && (
             <a
               href={doctor.source_url}
@@ -111,34 +132,36 @@ export const DoctorCard: React.FC<DoctorCardProps> = ({ doctor, onBook }) => {
       </div>
 
       {/* Action Buttons */}
-      <div className="pt-2">
-        {isDirectoryOnly ? (
+      <div className="pt-2 flex flex-col gap-2">
+        <div className="flex items-center gap-2">
           <Link
             to={`/doctors/${doctor.id}`}
-            className="w-full flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-bold transition-all shadow-sm"
+            className="flex-1 flex items-center justify-center gap-1 py-2 px-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-semibold transition-all shadow-sm"
           >
-            <Eye className="w-3.5 h-3.5 text-primary-500" /> View Profile & Details
+            <Eye className="w-3.5 h-3.5 text-primary-500" /> View Profile
           </Link>
-        ) : (
-          <div className="flex items-center gap-2">
-            <Link
-              to={`/appointments/book?doctor=${doctor.id}`}
-              className="flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-primary-600 hover:bg-primary-700 text-white text-xs font-semibold shadow transition-all"
-            >
-              <Calendar className="w-3.5 h-3.5" /> Book Consultation
-            </Link>
 
-            {doctor.video_consultation_enabled && (
+          {!isDirectoryOnly && (
+            <>
               <Link
-                to={`/appointments/book?doctor=${doctor.id}&mode=video`}
-                className="p-2.5 rounded-xl border border-primary-200 dark:border-primary-800 bg-primary-50 dark:bg-primary-950/40 text-primary-600 hover:bg-primary-100 transition-colors"
-                title="Online Video Consultation Available"
+                to={`/appointments/book?doctor=${doctor.id}`}
+                className="flex-1 flex items-center justify-center gap-1 py-2 px-2.5 rounded-xl bg-primary-600 hover:bg-primary-700 text-white text-xs font-semibold shadow transition-all"
               >
-                <Video className="w-4 h-4" />
+                <Calendar className="w-3.5 h-3.5" /> Book
               </Link>
-            )}
-          </div>
-        )}
+
+              {doctor.video_consultation_enabled && (
+                <Link
+                  to={`/appointments/book?doctor=${doctor.id}&mode=video`}
+                  className="p-2 rounded-xl border border-teal-300 dark:border-teal-800 bg-teal-50 dark:bg-teal-950/60 text-teal-600 dark:text-teal-400 hover:bg-teal-100 transition-colors"
+                  title="Book Video Consultation"
+                >
+                  <Video className="w-3.5 h-3.5" />
+                </Link>
+              )}
+            </>
+          )}
+        </div>
       </div>
     </div>
   );
