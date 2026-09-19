@@ -6,13 +6,46 @@ export const doctorService = {
   async getDoctors(): Promise<Doctor[]> {
     if (isSupabaseConfigured) {
       try {
-        // Attempt to ensure DOC001 exists in Supabase
+        // Attempt to ensure DOC001 and DOC002 exist in Supabase
         try {
-          const { data: existing } = await supabase.from('doctor_profiles').select('id').eq('id', 'DOC001').maybeSingle();
-          if (!existing) {
-            await supabase.from('doctor_profiles').upsert({
+          await supabase.from('doctor_profiles').upsert([
+            {
               id: 'DOC001',
               doctor_id: 'DOC001',
+              doctor_name: 'Dr. Kiran Gowda',
+              name: 'Dr. Kiran Gowda',
+              phone: '9110885805',
+              qualification: 'MBBS, MD',
+              specialization: 'General Medicine',
+              hospital_name: 'ABC Hospital, Hassan',
+              experience_years: 8,
+              consultation_fee: 300,
+              availability_days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
+              availability_time: 'Monday–Saturday, 10:00 AM–1:00 PM',
+              time_slots: ['10:00 AM', '10:30 AM', '11:00 AM', '11:30 AM', '12:00 PM', '12:30 PM', '01:00 PM'],
+              medical_registration_number: '01012',
+              registration_authority: 'Karnataka Medical Council',
+              rating: 4.5,
+              reviews_count: 120,
+              email: 'doctor@example.com',
+              address: 'Hassan, Karnataka',
+              city: 'Hassan',
+              state: 'Karnataka',
+              verified_public_profile: true,
+              campuscare_enabled: true,
+              appointment_enabled: true,
+              video_consultation_enabled: true,
+              consent_status: 'verified',
+              consent_date: '2026-09-18',
+              source_url: 'https://example.com/doctor-profile',
+              last_verified: '18-09-2026',
+              provider_status: 'active',
+              image_url: 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?auto=format&fit=crop&q=80&w=400',
+              is_available: true
+            },
+            {
+              id: 'DOC002',
+              doctor_id: 'DOC002',
               doctor_name: 'Dr. Madan S K',
               name: 'Dr. Madan S K',
               phone: '8152093467',
@@ -41,10 +74,10 @@ export const doctorService = {
               source_url: 'https://example.com/doctor-profile',
               last_verified: '18-09-2026',
               provider_status: 'active',
-              image_url: 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?auto=format&fit=crop&q=80&w=400',
+              image_url: 'https://images.unsplash.com/photo-1537368910025-700350fe46c7?auto=format&fit=crop&q=80&w=400',
               is_available: true
-            });
-          }
+            }
+          ], { onConflict: 'id' });
         } catch (syncErr) {
           // Non-blocking if table permissions restrict DDL/upserts
         }
@@ -54,59 +87,71 @@ export const doctorService = {
           .select('*');
 
         if (!error && data && data.length > 0) {
-          const mapped: Doctor[] = data.map((d: any) => ({
-            id: d.id,
-            doctorId: d.doctor_id || d.id,
-            doctor_name: d.doctor_name || d.name,
-            name: d.doctor_name || d.name,
-            specialization: d.specialization || 'Consultant Specialist',
-            qualification: d.qualification || 'Not publicly listed',
-            hospital_name: d.hospital_name || 'Karna Hospital, Hassan',
-            city: d.city || 'Hassan',
-            state: d.state || 'Karnataka',
-            availability_days: d.availability_days || ['Daily (Mon-Sun)'],
-            availability_time: d.availability_time || 'Daily: 9:30 AM - 2:00 PM & 5:00 PM - 8:00 PM',
-            availableDays: d.availability_days || ['Daily (Mon-Sun)'],
-            timeSlots: d.time_slots || ['09:30 AM', '11:00 AM', '01:00 PM', '05:00 PM', '06:30 PM', '07:30 PM'],
-            consultation_type: d.consultation_type || 'in_person',
-            source_url: d.source_url || 'https://karnahospital.in/',
-            data_source: d.data_source || 'Official hospital website',
-            verified_public_profile: d.verified_public_profile ?? true,
-            provider_status: (d.provider_status as ProviderStatus) || 'directory_only',
-            campuscare_enabled: d.campuscare_enabled ?? false,
-            appointment_enabled: d.appointment_enabled ?? false,
-            video_consultation_enabled: d.video_consultation_enabled ?? false,
-            consent_status: (d.consent_status as any) || 'pending',
-            consent_date: d.consent_date || null,
-            image_url: d.image_url,
-            avatarUrl: d.image_url,
-            image_source_url: d.image_source_url,
-            image_source_type: d.image_source_type || 'Official hospital profile',
-            image_verified: d.image_verified ?? true,
-            initials: d.initials || (d.doctor_name || d.name).split(' ').filter((w: string) => !w.includes('.')).map((w: string) => w[0]).join('').slice(0, 2).toUpperCase(),
-            isAvailable: d.is_available ?? true,
-            phone: d.phone,
-            email: d.email,
-            roomNumber: d.room_number,
-            bio: d.bio,
-            experienceYears: d.experience_years ?? d.experienceYears ?? (d.id === 'DOC001' ? 8 : undefined),
-            consultationFee: d.consultation_fee ?? d.consultationFee ?? (d.id === 'DOC001' ? 300 : undefined),
-            rating: d.rating ?? (d.id === 'DOC001' ? 4.5 : undefined),
-            reviewsCount: d.reviews_count ?? d.reviewsCount ?? (d.id === 'DOC001' ? 120 : undefined),
-            reviews: d.reviews ?? d.reviews_count ?? (d.id === 'DOC001' ? 120 : undefined),
-            medicalRegistrationNumber: d.medical_registration_number ?? d.medicalRegistrationNumber ?? (d.id === 'DOC001' ? '01012' : undefined),
-            registrationAuthority: d.registration_authority ?? d.registrationAuthority ?? (d.id === 'DOC001' ? 'Karnataka Medical Council' : undefined),
-            address: d.address ?? (d.id === 'DOC001' ? 'Hassan, Karnataka' : `${d.city || 'Hassan'}, ${d.state || 'Karnataka'}`),
-            lastVerified: d.last_verified ?? d.lastVerified ?? (d.id === 'DOC001' ? '18-09-2026' : undefined),
-            isCampusDoctor: false,
-            isDemo: false,
-            dataSource: d.data_source || 'Official hospital profile'
-          }));
+          const mapped: Doctor[] = data.map((d: any) => {
+            const isDoc001 = d.id === 'DOC001' || d.doctor_id === 'DOC001';
+            const isDoc002 = d.id === 'DOC002' || d.doctor_id === 'DOC002';
+            const isFeatured = isDoc001 || isDoc002;
 
-          // Ensure DOC001 is placed as the FIRST doctor
+            return {
+              id: d.id,
+              doctorId: d.doctor_id || d.id,
+              doctor_name: isDoc001 ? 'Dr. Kiran Gowda' : isDoc002 ? 'Dr. Madan S K' : (d.doctor_name || d.name),
+              name: isDoc001 ? 'Dr. Kiran Gowda' : isDoc002 ? 'Dr. Madan S K' : (d.doctor_name || d.name),
+              specialization: isFeatured ? 'General Medicine' : (d.specialization || 'Consultant Specialist'),
+              qualification: isFeatured ? 'MBBS, MD' : (d.qualification || 'Not publicly listed'),
+              hospital_name: isFeatured ? 'ABC Hospital, Hassan' : (d.hospital_name || 'Karna Hospital, Hassan'),
+              city: d.city || 'Hassan',
+              state: d.state || 'Karnataka',
+              availability_days: isFeatured ? ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] : (d.availability_days || ['Daily (Mon-Sun)']),
+              availability_time: isFeatured ? 'Monday–Saturday, 10:00 AM–1:00 PM' : (d.availability_time || 'Daily: 9:30 AM - 2:00 PM & 5:00 PM - 8:00 PM'),
+              availableDays: isFeatured ? ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] : (d.availability_days || ['Daily (Mon-Sun)']),
+              timeSlots: isFeatured ? ['10:00 AM', '10:30 AM', '11:00 AM', '11:30 AM', '12:00 PM', '12:30 PM', '01:00 PM'] : (d.time_slots || ['09:30 AM', '11:00 AM', '01:00 PM', '05:00 PM', '06:30 PM', '07:30 PM']),
+              consultation_type: isFeatured ? 'in_person' : (d.consultation_type || 'in_person'),
+              source_url: isFeatured ? 'https://example.com/doctor-profile' : (d.source_url || 'https://karnahospital.in/'),
+              data_source: isFeatured ? 'ABC Hospital, Hassan' : (d.data_source || 'Official hospital website'),
+              verified_public_profile: isFeatured ? true : (d.verified_public_profile ?? true),
+              provider_status: isFeatured ? 'active' : ((d.provider_status as ProviderStatus) || 'directory_only'),
+              campuscare_enabled: isFeatured ? true : (d.campuscare_enabled ?? false),
+              appointment_enabled: isFeatured ? true : (d.appointment_enabled ?? false),
+              video_consultation_enabled: isFeatured ? true : (d.video_consultation_enabled ?? false),
+              consent_status: isFeatured ? 'verified' : ((d.consent_status as any) || 'pending'),
+              consent_date: isFeatured ? '2026-09-18' : (d.consent_date || null),
+              image_url: isDoc001 ? 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?auto=format&fit=crop&q=80&w=400' : isDoc002 ? 'https://images.unsplash.com/photo-1537368910025-700350fe46c7?auto=format&fit=crop&q=80&w=400' : d.image_url,
+              avatarUrl: isDoc001 ? 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?auto=format&fit=crop&q=80&w=400' : isDoc002 ? 'https://images.unsplash.com/photo-1537368910025-700350fe46c7?auto=format&fit=crop&q=80&w=400' : d.image_url,
+              image_source_url: isFeatured ? 'https://example.com/doctor-profile' : d.image_source_url,
+              image_source_type: 'Official hospital profile',
+              image_verified: true,
+              initials: isDoc001 ? 'KG' : isDoc002 ? 'MS' : (d.initials || (d.doctor_name || d.name).split(' ').filter((w: string) => !w.includes('.')).map((w: string) => w[0]).join('').slice(0, 2).toUpperCase()),
+              isAvailable: d.is_available ?? true,
+              phone: isDoc001 ? '9110885805' : isDoc002 ? '8152093467' : d.phone,
+              email: isFeatured ? 'doctor@example.com' : d.email,
+              roomNumber: d.room_number,
+              bio: d.bio,
+              experienceYears: isFeatured ? 8 : (d.experience_years ?? d.experienceYears),
+              consultationFee: isFeatured ? 300 : (d.consultation_fee ?? d.consultationFee),
+              rating: isFeatured ? 4.5 : d.rating,
+              reviewsCount: isFeatured ? 120 : (d.reviews_count ?? d.reviewsCount),
+              reviews: isFeatured ? 120 : (d.reviews ?? d.reviews_count),
+              medicalRegistrationNumber: isFeatured ? '01012' : (d.medical_registration_number ?? d.medicalRegistrationNumber),
+              registrationAuthority: isFeatured ? 'Karnataka Medical Council' : (d.registration_authority ?? d.registrationAuthority),
+              address: isFeatured ? 'Hassan, Karnataka' : (d.address ?? `${d.city || 'Hassan'}, ${d.state || 'Karnataka'}`),
+              lastVerified: isFeatured ? '18-09-2026' : (d.last_verified ?? d.lastVerified),
+              isCampusDoctor: false,
+              isDemo: false,
+              dataSource: isFeatured ? 'ABC Hospital, Hassan' : (d.data_source || 'Official hospital profile')
+            };
+          });
+
+          // Ensure DOC001 is FIRST, DOC002 is SECOND, then alphabetical
           mapped.sort((a, b) => {
-            if (a.id === 'DOC001' || a.doctorId === 'DOC001') return -1;
-            if (b.id === 'DOC001' || b.doctorId === 'DOC001') return 1;
+            const getRank = (doc: Doctor) => {
+              if (doc.id === 'DOC001' || doc.doctorId === 'DOC001') return 1;
+              if (doc.id === 'DOC002' || doc.doctorId === 'DOC002') return 2;
+              return 100;
+            };
+            const rankA = getRank(a);
+            const rankB = getRank(b);
+            if (rankA !== rankB) return rankA - rankB;
             return a.name.localeCompare(b.name);
           });
 

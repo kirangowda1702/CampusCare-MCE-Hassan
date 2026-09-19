@@ -20,6 +20,19 @@ const defaultAvailabilities: DoctorAvailability[] = [
     isActive: true
   },
   {
+    id: 'avail-doc002',
+    doctorId: 'DOC002',
+    dayOfWeek: 'Monday,Tuesday,Wednesday,Thursday,Friday,Saturday',
+    startTime: '10:00',
+    endTime: '13:00',
+    slotDurationMinutes: 30,
+    breakStartTime: undefined,
+    breakEndTime: undefined,
+    isOnlineEnabled: true,
+    isInPersonEnabled: true,
+    isActive: true
+  },
+  {
     id: 'avail-001',
     doctorId: 'doc-hassan-001',
     dayOfWeek: 'Daily',
