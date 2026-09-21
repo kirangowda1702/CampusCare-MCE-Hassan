@@ -58,7 +58,7 @@ export const DoctorDetailPage: React.FC = () => {
 
   const initials = doctor.initials || doctor.name.split(' ').filter(w => !w.includes('.')).map(w => w[0]).join('').slice(0, 2).toUpperCase() || 'DR';
 
-  const isDirectoryOnly = doctor.provider_status === 'directory_only';
+  const isDirectoryOnly = doctor.provider_status === 'directory_only' && !doctor.campuscare_enabled && !doctor.appointment_enabled;
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 pb-12">
@@ -105,14 +105,14 @@ export const DoctorDetailPage: React.FC = () => {
                   : 'bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800'
               }`}>
                 <ShieldCheck className="w-3.5 h-3.5" />
-                {doctor.verified_public_profile ? 'Verified Profile' : 'Verified Profile: Pending'}
+                {doctor.verified_public_profile ? '✓ Verified Profile' : 'Verified Profile: Pending'}
               </span>
               <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full border text-[11px] font-mono font-semibold ${
                 doctor.campuscare_enabled
                   ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800'
                   : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
               }`}>
-                {doctor.campuscare_enabled ? 'CampusCare Consultation Approved' : 'CampusCare Consultation: Pending'}
+                {doctor.campuscare_enabled ? '✓ CampusCare Consultation Approved' : 'CampusCare Consultation: Pending'}
               </span>
               <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full border text-[11px] font-bold ${
                 doctor.video_consultation_enabled
@@ -120,7 +120,7 @@ export const DoctorDetailPage: React.FC = () => {
                   : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700'
               }`}>
                 <Video className="w-3.5 h-3.5" />
-                {doctor.video_consultation_enabled ? 'Video Consultation Available' : 'Video Consultation: Not Configured'}
+                {doctor.video_consultation_enabled ? '✓ Video Consultation Available' : 'Video Consultation: Not Configured'}
               </span>
             </div>
 
