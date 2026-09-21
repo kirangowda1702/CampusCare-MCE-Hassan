@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 import {
   MapPin,
   Navigation,
@@ -9,7 +11,6 @@ import {
   Pill,
   Activity,
   LocateFixed,
-  Compass,
   AlertCircle,
   Info,
   CheckCircle2,
@@ -17,13 +18,6 @@ import {
 } from 'lucide-react';
 import { Hospital, Pharmacy, DiagnosticCentre } from '../../types';
 import { healthcareDirectoryService } from '../../services/healthcareDirectoryService';
-
-declare global {
-  interface Window {
-    google?: any;
-    initGoogleMapCallback?: () => void;
-  }
-}
 
 interface HealthcareMapProps {
   filterType?: 'all' | 'campus' | 'hospitals' | 'pharmacies' | 'diagnostics';
@@ -39,9 +33,9 @@ export const HealthcareMap: React.FC<HealthcareMapProps> = ({
   height = '480px'
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
-  const mapInstanceRef = useRef<any>(null);
-  const markersRef = useRef<any[]>([]);
-  const userMarkerRef = useRef<any>(null);
+  const mapInstanceRef = useRef<L.Map | null>(null);
+  const markersLayerRef = useRef<L.LayerGroup | null>(null);
+  const userMarkerRef = useRef<L.Marker | null>(null);
 
   const [activeCategory, setActiveCategory] = useState<'all' | 'campus' | 'hospitals' | 'pharmacies' | 'diagnostics'>(filterType);
   const [hospitals, setHospitals] = useState<Hospital[]>([]);
@@ -53,29 +47,28 @@ export const HealthcareMap: React.FC<HealthcareMapProps> = ({
   const [locationStatus, setLocationStatus] = useState<string>('Location not shared');
   const [locationDenied, setLocationDenied] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
+  const [tileError, setTileError] = useState(false);
 
-  const [isGoogleMapsLoaded, setIsGoogleMapsLoaded] = useState(false);
-  const [googleMapsError, setGoogleMapsError] = useState<string | null>(null);
-
-  const envKey = (typeof import.meta !== 'undefined' && (import.meta as any).env)
-    ? (import.meta as any).env.VITE_GOOGLE_MAPS_API_KEY
-    : '';
-
+  // Load verified facilities from Supabase / Directory Service
   const loadData = async (loc?: { lat: number; lng: number } | null) => {
-    const [hList, pList, dList] = await Promise.all([
-      healthcareDirectoryService.getHospitals(loc),
-      healthcareDirectoryService.getPharmacies(loc),
-      healthcareDirectoryService.getDiagnosticCentres(loc)
-    ]);
-    setHospitals(hList);
-    setPharmacies(pList);
-    setDiagnostics(dList);
+    try {
+      const [hList, pList, dList] = await Promise.all([
+        healthcareDirectoryService.getHospitals(loc),
+        healthcareDirectoryService.getPharmacies(loc),
+        healthcareDirectoryService.getDiagnosticCentres(loc)
+      ]);
+      setHospitals(hList);
+      setPharmacies(pList);
+      setDiagnostics(dList);
 
-    if (initialSelectedId) {
-      const found = [...hList, ...pList, ...dList].find(f => f.id === initialSelectedId);
-      if (found) setSelectedFacility(found);
-    } else if (!selectedFacility) {
-      setSelectedFacility(hList[0] || null);
+      if (initialSelectedId) {
+        const found = [...hList, ...pList, ...dList].find(f => f.id === initialSelectedId);
+        if (found) setSelectedFacility(found);
+      } else if (!selectedFacility) {
+        setSelectedFacility(hList[0] || null);
+      }
+    } catch (err) {
+      console.warn('Error loading healthcare directory:', err);
     }
   };
 
@@ -83,10 +76,11 @@ export const HealthcareMap: React.FC<HealthcareMapProps> = ({
     loadData(userLocation);
   }, []);
 
+  // Request Browser Geolocation
   const requestUserLocation = () => {
     if (!navigator.geolocation) {
       setLocationDenied(true);
-      setLocationStatus('Geolocation API is not supported by your browser.');
+      setLocationStatus('Location permission not granted');
       return;
     }
 
@@ -106,27 +100,29 @@ export const HealthcareMap: React.FC<HealthcareMapProps> = ({
         setLocationStatus(`GPS Active (${coords.lat.toFixed(4)}°, ${coords.lng.toFixed(4)}°)`);
         loadData(coords);
 
-        if (mapInstanceRef.current && window.google) {
-          const userLatLng = new window.google.maps.LatLng(coords.lat, coords.lng);
-          mapInstanceRef.current.panTo(userLatLng);
-          mapInstanceRef.current.setZoom(14);
+        if (mapInstanceRef.current) {
+          mapInstanceRef.current.flyTo([coords.lat, coords.lng], 14, { animate: true });
+
+          const userIcon = L.divIcon({
+            className: 'custom-user-marker',
+            html: `
+              <div style="position: relative; width: 24px; height: 24px;">
+                <div style="position: absolute; width: 24px; height: 24px; background: rgba(37, 99, 235, 0.35); border-radius: 50%; animation: ping 1.5s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>
+                <div style="position: absolute; top: 4px; left: 4px; width: 16px; height: 16px; background: #2563eb; border: 2.5px solid white; border-radius: 50%; box-shadow: 0 2px 6px rgba(0,0,0,0.4);"></div>
+              </div>
+            `,
+            iconSize: [24, 24],
+            iconAnchor: [12, 12]
+          });
 
           if (userMarkerRef.current) {
-            userMarkerRef.current.setPosition(userLatLng);
+            userMarkerRef.current.setLatLng([coords.lat, coords.lng]);
           } else {
-            userMarkerRef.current = new window.google.maps.Marker({
-              position: userLatLng,
-              map: mapInstanceRef.current,
-              title: 'Your Location',
-              icon: {
-                path: window.google.maps.SymbolPath.CIRCLE,
-                scale: 8,
-                fillColor: '#2563eb',
-                fillOpacity: 1,
-                strokeColor: '#ffffff',
-                strokeWeight: 2
-              }
-            });
+            userMarkerRef.current = L.marker([coords.lat, coords.lng], {
+              icon: userIcon,
+              title: 'Your Location'
+            }).addTo(mapInstanceRef.current);
+            userMarkerRef.current.bindPopup('<strong>Your Current Location</strong>');
           }
         }
       },
@@ -134,48 +130,14 @@ export const HealthcareMap: React.FC<HealthcareMapProps> = ({
         setIsLocating(false);
         setLocationDenied(true);
         if (err.code === err.PERMISSION_DENIED) {
-          setLocationStatus('Location access is disabled. Enable location permission to see your distance from healthcare facilities.');
+          setLocationStatus('Location permission not granted');
         } else {
-          setLocationStatus('Location signal unavailable: ' + err.message);
+          setLocationStatus('Location permission not granted');
         }
       },
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
     );
   };
-
-  useEffect(() => {
-    if (!envKey || envKey === 'your_google_maps_api_key_here' || envKey.trim() === '') {
-      setGoogleMapsError('Google Maps is not configured');
-      return;
-    }
-
-    if (window.google && window.google.maps) {
-      setIsGoogleMapsLoaded(true);
-      return;
-    }
-
-    const scriptId = 'google-maps-script-loader';
-    if (document.getElementById(scriptId)) return;
-
-    window.initGoogleMapCallback = () => {
-      setIsGoogleMapsLoaded(true);
-      setGoogleMapsError(null);
-    };
-
-    const script = document.createElement('script');
-    script.id = scriptId;
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(envKey)}&callback=initGoogleMapCallback&loading=async`;
-    script.async = true;
-    script.defer = true;
-    script.onerror = () => {
-      setGoogleMapsError('Google Maps is not configured (failed to load Google Maps SDK)');
-    };
-    document.head.appendChild(script);
-
-    return () => {
-      delete window.initGoogleMapCallback;
-    };
-  }, [envKey]);
 
   const allFacilities = [
     ...hospitals.map(h => ({ ...h, facilityType: 'hospital' as const })),
@@ -191,62 +153,130 @@ export const HealthcareMap: React.FC<HealthcareMapProps> = ({
     return true;
   });
 
+  // Initialize Leaflet Map Instance with OpenStreetMap Tiles
   useEffect(() => {
-    if (!isGoogleMapsLoaded || !mapContainerRef.current || !window.google) return;
-
-    const defaultCenter = userLocation || { lat: 13.0076, lng: 76.0965 };
+    if (!mapContainerRef.current) return;
 
     if (!mapInstanceRef.current) {
-      mapInstanceRef.current = new window.google.maps.Map(mapContainerRef.current, {
+      const defaultCenter: [number, number] = userLocation 
+        ? [userLocation.lat, userLocation.lng] 
+        : [13.0076, 76.0965]; // Hassan, Karnataka
+
+      const map = L.map(mapContainerRef.current, {
         center: defaultCenter,
-        zoom: 13
+        zoom: 13,
+        zoomControl: true,
+        attributionControl: true
       });
+
+      const tileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors'
+      });
+
+      tileLayer.on('tileerror', () => {
+        setTileError(true);
+      });
+
+      tileLayer.addTo(map);
+
+      markersLayerRef.current = L.layerGroup().addTo(map);
+      mapInstanceRef.current = map;
     }
 
-    markersRef.current.forEach(m => m.setMap(null));
-    markersRef.current = [];
+    return () => {
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.remove();
+        mapInstanceRef.current = null;
+        markersLayerRef.current = null;
+        userMarkerRef.current = null;
+      }
+    };
+  }, []);
+
+  // Update Markers when facilities or filter change
+  useEffect(() => {
+    if (!mapInstanceRef.current || !markersLayerRef.current) return;
+
+    markersLayerRef.current.clearLayers();
 
     filteredFacilities.forEach(facility => {
       const markerColor = facility.isCampusFacility
-        ? '#0d9488'
+        ? '#0d9488' // Teal (Campus)
         : facility.facilityType === 'hospital'
-        ? '#e11d48'
+        ? '#e11d48' // Rose (Hospital)
         : facility.facilityType === 'pharmacy'
-        ? '#059669'
-        : '#7c3aed';
+        ? '#059669' // Emerald (Pharmacy)
+        : '#7c3aed'; // Purple (Diagnostics)
 
-      const marker = new window.google.maps.Marker({
-        position: { lat: facility.lat, lng: facility.lng },
-        map: mapInstanceRef.current,
-        title: facility.name,
-        icon: {
-          path: window.google.maps.SymbolPath.BACKWARD_CLOSED_ARROW,
-          scale: 5,
-          fillColor: markerColor,
-          fillOpacity: 0.9,
-          strokeColor: '#ffffff',
-          strokeWeight: 1.5
-        }
+      const iconSvg = facility.isCampusFacility
+        ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>`
+        : facility.facilityType === 'hospital'
+        ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect width="16" height="20" x="4" y="2" rx="2" ry="2"/><path d="M9 22v-4h6v4"/><path d="M8 6h.01"/><path d="M16 6h.01"/><path d="M8 10h.01"/><path d="M16 10h.01"/><path d="M8 14h.01"/><path d="M16 14h.01"/></svg>`
+        : facility.facilityType === 'pharmacy'
+        ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m10.5 20.5 10-10a4.95 4.95 0 1 0-7-7l-10 10a4.95 4.95 0 1 0 7 7Z"/><path d="m8.5 8.5 7 7"/></svg>`
+        : `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>`;
+
+      const customIcon = L.divIcon({
+        className: 'custom-healthcare-marker',
+        html: `
+          <div style="
+            background-color: ${markerColor};
+            width: 30px;
+            height: 30px;
+            border-radius: 50% 50% 50% 0;
+            transform: rotate(-45deg);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 3px 8px rgba(0,0,0,0.3);
+            border: 2px solid #ffffff;
+            cursor: pointer;
+          ">
+            <div style="transform: rotate(45deg); display: flex; align-items: center; justify-content: center;">
+              ${iconSvg}
+            </div>
+          </div>
+        `,
+        iconSize: [30, 30],
+        iconAnchor: [15, 30],
+        popupAnchor: [0, -28]
       });
 
-      const infoWindow = new window.google.maps.InfoWindow({
-        content: `<div style="font-family: sans-serif; padding: 4px; max-width: 220px;">` +
-          `<strong style="font-size: 13px; color: #0f172a;">${facility.name}</strong>` +
-          `<p style="font-size: 11px; color: #64748b; margin: 4px 0;">${facility.address}</p>` +
-          `${facility.phone ? `<p style="font-size: 11px; color: #0284c7;">📞 ${facility.phone}</p>` : ''}` +
-          `${facility.verified ? '<span style="font-size: 10px; background: #dcfce7; color: #15803d; padding: 2px 6px; border-radius: 4px; font-weight: bold;">Verified Directory</span>' : '<span style="font-size: 10px; background: #fef9c3; color: #854d0e; padding: 2px 6px; border-radius: 4px;">Verification Pending</span>'}` +
-          `</div>`
+      const marker = L.marker([facility.lat, facility.lng], {
+        icon: customIcon,
+        title: facility.name
       });
 
-      marker.addListener('click', () => {
-        infoWindow.open(mapInstanceRef.current, marker);
+      const directionsUrl = `https://www.google.com/maps/dir/?api=1&destination=${facility.lat},${facility.lng}`;
+
+      const popupContent = `
+        <div style="font-family: system-ui, -apple-system, sans-serif; padding: 2px; max-width: 240px; color: #0f172a;">
+          <div style="font-size: 10px; font-weight: bold; text-transform: uppercase; color: ${markerColor}; margin-bottom: 2px;">
+            ${facility.isCampusFacility ? 'Campus First Aid Centre' : ('category' in facility ? (facility as any).category : facility.facilityType)}
+          </div>
+          <strong style="font-size: 13px; line-height: 1.3; display: block; margin-bottom: 4px; color: #0f172a;">${facility.name}</strong>
+          <p style="font-size: 11px; color: #475569; margin: 0 0 6px 0; line-height: 1.3;">${facility.address}</p>
+          ${facility.phone ? `<p style="font-size: 11px; color: #0284c7; font-weight: 600; margin: 0 0 6px 0;">📞 <a href="tel:${facility.phone}" style="color: #0284c7; text-decoration: none;">${facility.phone}</a></p>` : ''}
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 6px; padding-top: 6px; border-top: 1px solid #e2e8f0;">
+            <span style="font-size: 10px; background: #dcfce7; color: #15803d; padding: 2px 6px; border-radius: 4px; font-weight: bold;">Verified Directory</span>
+            <a href="${directionsUrl}" target="_blank" rel="noopener noreferrer" style="font-size: 11px; background: #0284c7; color: #ffffff; padding: 3px 8px; border-radius: 6px; text-decoration: none; font-weight: 600;">Get Directions &rarr;</a>
+          </div>
+        </div>
+      `;
+
+      marker.bindPopup(popupContent);
+
+      marker.on('click', () => {
         setSelectedFacility(facility);
         if (onSelectFacility) onSelectFacility(facility);
       });
 
-      markersRef.current.push(marker);
+      if (markersLayerRef.current) {
+        markersLayerRef.current.addLayer(marker);
+      }
     });
-  }, [isGoogleMapsLoaded, activeCategory, hospitals, pharmacies, diagnostics]);
+  }, [filteredFacilities]);
 
   const handleOpenDirections = (facility: any) => {
     const originParam = userLocation ? `&origin=${userLocation.lat},${userLocation.lng}` : '';
@@ -325,7 +355,7 @@ export const HealthcareMap: React.FC<HealthcareMapProps> = ({
           }`}
         >
           <LocateFixed className={`w-3.5 h-3.5 ${isLocating ? 'animate-spin' : ''}`} />
-          {userLocation ? 'GPS Live Connected' : 'Use Browser GPS'}
+          {userLocation ? 'GPS Live Connected' : 'Use My Location'}
         </button>
       </div>
 
@@ -348,87 +378,27 @@ export const HealthcareMap: React.FC<HealthcareMapProps> = ({
           <span>{locationStatus}</span>
         </div>
         {!userLocation && !locationDenied && (
-          <span className="text-[11px] text-slate-400 font-medium hidden sm:inline">Enable GPS to calculate geodesic distance</span>
+          <span className="text-[11px] text-slate-400 font-medium hidden sm:inline">Click &quot;Use My Location&quot; to calculate distance from current GPS position</span>
         )}
       </div>
 
-      {/* Map & Facility Details Panel */}
+      {/* Tile Error Alert if Internet Drops */}
+      {tileError && (
+        <div className="p-3 bg-amber-950 text-amber-200 text-xs flex items-center gap-2 border-b border-amber-800">
+          <AlertCircle className="w-4 h-4 text-amber-400 flex-shrink-0" />
+          <span>Map tiles could not be loaded. Please check your internet connection.</span>
+        </div>
+      )}
+
+      {/* Main Map & Facility Details Panel */}
       <div className="grid grid-cols-1 lg:grid-cols-12">
         <div className="lg:col-span-8 relative bg-slate-950 min-h-[420px]" style={{ height }}>
-          {isGoogleMapsLoaded && !googleMapsError ? (
-            <div ref={mapContainerRef} className="w-full h-full" />
-          ) : (
-            <div className="w-full h-full p-6 relative flex flex-col justify-between overflow-y-auto bg-slate-900 text-white">
-              <div className="space-y-4">
-                <div className="p-4 rounded-2xl bg-amber-950/60 border border-amber-800 text-amber-200 text-xs flex items-start gap-3">
-                  <Info className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
-                  <div className="space-y-1">
-                    <p className="font-bold text-amber-300">Google Maps is not configured</p>
-                    <p className="text-[11px] leading-relaxed text-amber-200/80">
-                      Live Google Maps tiles require <code>VITE_GOOGLE_MAPS_API_KEY</code> to be configured in Vercel project environment variables. Verified Hassan healthcare coordinates, facility directory, and direct navigation links remain fully active below.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {filteredFacilities.map(fac => {
-                    const isSelected = currentSelection?.id === fac.id;
-                    const isCampus = fac.isCampusFacility;
-                    const addressStr = fac.address || '';
-                    const hasER = 'emergencyAvailable' in fac ? (fac as any).emergencyAvailable : false;
-                    return (
-                      <button
-                        key={fac.id}
-                        type="button"
-                        onClick={() => setSelectedFacility(fac)}
-                        className={`text-left p-3 rounded-xl border transition flex items-start gap-3 ${
-                          isSelected
-                            ? 'bg-sky-950/70 border-sky-400 text-white ring-1 ring-sky-400'
-                            : 'bg-slate-800/80 border-slate-700 text-slate-200 hover:bg-slate-800 hover:border-slate-600'
-                        }`}
-                      >
-                        <div
-                          className={`p-2 rounded-lg flex-shrink-0 ${
-                            isCampus
-                              ? 'bg-teal-600 text-white'
-                              : fac.facilityType === 'hospital'
-                              ? 'bg-rose-600 text-white'
-                              : fac.facilityType === 'pharmacy'
-                              ? 'bg-emerald-600 text-white'
-                              : 'bg-purple-600 text-white'
-                          }`}
-                        >
-                          {isCampus ? (
-                            <Shield className="w-4 h-4" />
-                          ) : fac.facilityType === 'hospital' ? (
-                            <Building2 className="w-4 h-4" />
-                          ) : fac.facilityType === 'pharmacy' ? (
-                            <Pill className="w-4 h-4" />
-                          ) : (
-                            <Activity className="w-4 h-4" />
-                          )}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <p className="font-semibold text-xs truncate">{fac.name}</p>
-                          <p className="text-[11px] text-slate-400 truncate">{addressStr}</p>
-                          <div className="flex items-center gap-2 mt-1 text-[10px] text-slate-300">
-                            <span>{fac.distanceKm?.toFixed(1) || '0.0'} km away</span>
-                            {hasER && (
-                              <span className="text-rose-400 font-medium">24/7 ER</span>
-                            )}
-                          </div>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div className="mt-4 flex items-center justify-between text-xs text-slate-400 bg-slate-900/80 p-3 rounded-xl border border-slate-800">
-                <span>Select any facility to inspect details & launch Google Maps directions</span>
-                <span className="text-emerald-400 font-mono text-[11px] font-semibold">Hassan, Karnataka</span>
-              </div>
+          {filteredFacilities.length === 0 ? (
+            <div className="w-full h-full flex items-center justify-center text-slate-400 text-xs p-6">
+              No verified healthcare facilities available.
             </div>
+          ) : (
+            <div ref={mapContainerRef} className="w-full h-full z-0" />
           )}
         </div>
 
@@ -445,7 +415,7 @@ export const HealthcareMap: React.FC<HealthcareMapProps> = ({
                     : currentSelection.facilityType === 'pharmacy'
                     ? 'bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
                     : 'bg-purple-50 dark:bg-purple-950 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800'
-                }`}>{currentSelection.category || currentSelection.facilityType}</span>
+                }`}>{currentSelection.isCampusFacility ? 'Campus First Aid Centre' : currentSelection.category || currentSelection.facilityType}</span>
 
                 {currentSelection.verified ? (
                   <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded-md border border-emerald-200 dark:border-emerald-800">
@@ -470,14 +440,14 @@ export const HealthcareMap: React.FC<HealthcareMapProps> = ({
 
               <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800 text-xs flex items-center justify-between">
                 <span className="text-slate-500 dark:text-slate-400 flex items-center gap-1">
-                  <Navigation className="w-3.5 h-3.5 text-primary-500" /> Distance from you:
+                  <Navigation className="w-3.5 h-3.5 text-primary-500" /> Distance:
                 </span>
                 <span className="font-bold text-slate-900 dark:text-white font-mono">
                   {userLocation && currentSelection.liveDistance !== undefined
                     ? `${currentSelection.liveDistance} km away`
                     : currentSelection.distanceKm
                     ? `~${currentSelection.distanceKm} km (from MCE)`
-                    : 'Enable GPS for distance'}
+                    : 'Click Use My Location'}
                 </span>
               </div>
 
@@ -539,7 +509,7 @@ export const HealthcareMap: React.FC<HealthcareMapProps> = ({
                 onClick={() => handleOpenDirections(currentSelection)}
                 className="w-full flex items-center justify-center gap-1.5 py-2.5 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-bold transition-all"
               >
-                <Navigation className="w-3.5 h-3.5 text-primary-500" /> Open Directions in Google Maps
+                <Navigation className="w-3.5 h-3.5 text-primary-500" /> Get Directions
               </button>
             </div>
           )}
