@@ -34,10 +34,20 @@ export const EmergencyModal: React.FC = () => {
           },
           err => {
             setGpsCoords(null);
-            setGpsStatus('Precise location was not shared (Permission denied/unavailable).');
+            if (err.code === err.PERMISSION_DENIED) {
+              setGpsStatus('Location permission denied. Please allow location in browser settings.');
+            } else if (err.code === err.POSITION_UNAVAILABLE) {
+              setGpsStatus('Unable to determine your location.');
+            } else if (err.code === err.TIMEOUT) {
+              setGpsStatus('Location request timed out.');
+            } else {
+              setGpsStatus('Unable to determine your location.');
+            }
           },
-          { enableHighAccuracy: true, timeout: 6000 }
+          { enableHighAccuracy: true, timeout: 6000, maximumAge: 0 }
         );
+      } else {
+        setGpsStatus('Unable to determine your location.');
       }
     }
   }, [isEmergencyModalOpen]);

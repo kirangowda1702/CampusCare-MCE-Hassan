@@ -80,13 +80,13 @@ export const HealthcareMap: React.FC<HealthcareMapProps> = ({
   const requestUserLocation = () => {
     if (!navigator.geolocation) {
       setLocationDenied(true);
-      setLocationStatus('Location permission not granted');
+      setLocationStatus('Unable to determine your location.');
       return;
     }
 
     setIsLocating(true);
     setLocationDenied(false);
-    setLocationStatus('Requesting GPS permission from browser...');
+    setLocationStatus('Requesting location permission...');
 
     navigator.geolocation.getCurrentPosition(
       pos => {
@@ -130,12 +130,16 @@ export const HealthcareMap: React.FC<HealthcareMapProps> = ({
         setIsLocating(false);
         setLocationDenied(true);
         if (err.code === err.PERMISSION_DENIED) {
-          setLocationStatus('Location permission not granted');
+          setLocationStatus('Location permission denied. Please allow location in browser settings.');
+        } else if (err.code === err.POSITION_UNAVAILABLE) {
+          setLocationStatus('Unable to determine your location.');
+        } else if (err.code === err.TIMEOUT) {
+          setLocationStatus('Location request timed out.');
         } else {
-          setLocationStatus('Location permission not granted');
+          setLocationStatus('Unable to determine your location.');
         }
       },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
   };
 
