@@ -19,7 +19,8 @@ import {
   Search,
   ArrowRight,
   RotateCcw,
-  Stethoscope
+  Stethoscope,
+  ShieldAlert
 } from 'lucide-react';
 import { mockSymptomsList } from '../../data/symptoms';
 import { SymptomGuidanceRequest, SymptomGuidanceResponse, MedicineInfo, Doctor } from '../../types';
@@ -54,6 +55,7 @@ export const SymptomTriage: React.FC = () => {
   const [triageResult, setTriageResult] = useState<SymptomGuidanceResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isUnavailable, setIsUnavailable] = useState(false);
 
   // Doctors matching state
   const [verifiedDoctors, setVerifiedDoctors] = useState<Doctor[]>([]);
@@ -62,8 +64,7 @@ export const SymptomTriage: React.FC = () => {
   const [medicineQuery, setMedicineQuery] = useState<string>('');
   const [medicineResults, setMedicineResults] = useState<MedicineInfo[] | null>(null);
   const [isMedicineLoading, setIsMedicineLoading] = useState(false);
-
-  const providerStatus = aiService.getProviderStatus();
+  const [medicineError, setMedicineError] = useState<string | null>(null);
 
   // Load verified doctors for directory mapping
   useEffect(() => {
@@ -98,12 +99,14 @@ export const SymptomTriage: React.FC = () => {
       return;
     }
     setErrorMessage(null);
+    setIsUnavailable(false);
     setStep(2);
   };
 
   const handleRunGuidance = async () => {
     setIsLoading(true);
     setErrorMessage(null);
+    setIsUnavailable(false);
     try {
       const requestPayload: SymptomGuidanceRequest = {
         symptoms: selectedSymptoms,
@@ -121,7 +124,11 @@ export const SymptomTriage: React.FC = () => {
       setTriageResult(result);
     } catch (err: any) {
       console.warn('Guidance evaluation error:', err);
-      setErrorMessage(err.message || 'Unable to complete evaluation. Please try again.');
+      const msg = err.message || 'AI Health Guidance is currently unavailable.';
+      setErrorMessage(msg);
+      if (msg.includes('unavailable') || msg.includes('fail')) {
+        setIsUnavailable(true);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -138,6 +145,7 @@ export const SymptomTriage: React.FC = () => {
     setCurrentMedications('');
     setAllergies('');
     setErrorMessage(null);
+    setIsUnavailable(false);
   };
 
   const handleMedicineSearch = async (e?: React.FormEvent) => {
@@ -145,11 +153,14 @@ export const SymptomTriage: React.FC = () => {
     if (!medicineQuery.trim()) return;
 
     setIsMedicineLoading(true);
+    setMedicineError(null);
     try {
       const info = await aiService.queryMedicine(medicineQuery.trim());
       setMedicineResults(info);
-    } catch (err) {
+    } catch (err: any) {
       console.warn('Medicine lookup error:', err);
+      setMedicineError(err.message || 'Unable to retrieve medicine information.');
+      setMedicineResults(null);
     } finally {
       setIsMedicineLoading(false);
     }
@@ -171,9 +182,9 @@ export const SymptomTriage: React.FC = () => {
         <div className="flex-1 p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900 flex items-start gap-3 text-xs">
           <Info className="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
           <div className="text-amber-900 dark:text-amber-200 space-y-1">
-            <p className="font-bold">Medical Safety & Educational Decision-Support Notice:</p>
+            <p className="font-bold">Medical Safety & Evidence-Grounded Notice:</p>
             <p className="text-[11px] leading-relaxed text-amber-800 dark:text-amber-300">
-              This tool provides general health guidance and does not replace diagnosis, treatment, or emergency care from a qualified healthcare professional. Never delay seeking professional medical evaluation.
+              This tool provides general health guidance and does not replace diagnosis, treatment, or emergency care from a qualified healthcare professional. Never delay seeking professional clinical evaluation.
             </p>
           </div>
         </div>
@@ -183,7 +194,7 @@ export const SymptomTriage: React.FC = () => {
           <div>
             <span className="font-bold block text-slate-800 dark:text-slate-200">Clinical AI Engine:</span>
             <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
-              Google Gemini 1.5 Flash + MedlinePlus / WHO
+              Google Gemini 1.5 Flash + MedlinePlus & WHO Sources
             </span>
           </div>
         </div>
@@ -192,7 +203,7 @@ export const SymptomTriage: React.FC = () => {
       {/* Tabs: Symptom Checker vs Medicine Info */}
       <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-2">
         <button
-          onClick={() => { setActiveTab('symptoms'); setErrorMessage(null); }}
+          onClick={() => { setActiveTab('symptoms'); setErrorMessage(null); setIsUnavailable(false); }}
           className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
             activeTab === 'symptoms'
               ? 'bg-primary-600 text-white shadow-sm'
@@ -200,11 +211,11 @@ export const SymptomTriage: React.FC = () => {
           }`}
         >
           <Activity className="w-4 h-4" />
-          Symptom Guidance & Triage
+          AI Health Guidance
         </button>
 
         <button
-          onClick={() => { setActiveTab('medicine'); setErrorMessage(null); }}
+          onClick={() => { setActiveTab('medicine'); setErrorMessage(null); setIsUnavailable(false); }}
           className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
             activeTab === 'medicine'
               ? 'bg-primary-600 text-white shadow-sm'
@@ -216,8 +227,35 @@ export const SymptomTriage: React.FC = () => {
         </button>
       </div>
 
-      {/* ERROR ALERT */}
-      {errorMessage && (
+      {/* UNAVAILABLE / FAILURE MODE BANNER */}
+      {isUnavailable && (
+        <div className="p-6 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 space-y-4">
+          <div className="flex items-center gap-2.5 text-amber-900 dark:text-amber-200 font-bold text-sm">
+            <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0" />
+            <span>AI Health Guidance is currently unavailable.</span>
+          </div>
+          <p className="text-xs text-amber-800 dark:text-amber-300 leading-relaxed">
+            The AI service could not be reached. For your health and safety, please book an appointment with a verified doctor or contact campus emergency services directly.
+          </p>
+          <div className="flex flex-wrap items-center gap-3 pt-1">
+            <Link
+              to="/appointments/book"
+              className="px-5 py-2.5 rounded-xl bg-primary-600 hover:bg-primary-700 text-white font-bold text-xs shadow-md flex items-center gap-2"
+            >
+              <Calendar className="w-4 h-4" /> Book Doctor
+            </Link>
+            <button
+              onClick={() => setIsEmergencyModalOpen(true)}
+              className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-md flex items-center gap-2"
+            >
+              <PhoneCall className="w-4 h-4" /> Campus Emergency
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ERROR ALERT (Non-unavailable) */}
+      {errorMessage && !isUnavailable && (
         <div className="p-4 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 text-xs text-rose-800 dark:text-rose-200 flex items-center gap-2">
           <AlertTriangle className="w-4 h-4 text-rose-600 flex-shrink-0" />
           <span>{errorMessage}</span>
@@ -240,7 +278,7 @@ export const SymptomTriage: React.FC = () => {
                           Step 1: Enter or Select Symptoms
                         </h3>
                         <p className="text-xs text-slate-500 dark:text-slate-400">
-                          Select the common symptoms you are experiencing or describe them below.
+                          Describe your symptoms or select common ones below.
                         </p>
                       </div>
                       <div className="relative">
@@ -264,7 +302,7 @@ export const SymptomTriage: React.FC = () => {
                         rows={2}
                         value={freeTextSymptom}
                         onChange={e => setFreeTextSymptom(e.target.value)}
-                        placeholder="e.g., Throbbing headache on the right side with mild nausea since yesterday evening..."
+                        placeholder="e.g., headache, fever and cough, itchy skin, back pain..."
                         className="w-full p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/80 text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-primary-500"
                       />
                     </div>
@@ -297,7 +335,7 @@ export const SymptomTriage: React.FC = () => {
 
                   <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
                     <span className="text-xs text-slate-500">
-                      {selectedSymptoms.length} symptom(s) selected
+                      {selectedSymptoms.length} selected &bull; {freeTextSymptom.trim() ? 'Text description provided' : 'No description'}
                     </span>
                     <button
                       onClick={handleProceedToFollowUp}
@@ -318,7 +356,7 @@ export const SymptomTriage: React.FC = () => {
                       Step 2: Relevant Clinical Follow-Up
                     </h3>
                     <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                      Answering these contextual questions helps evaluate severity and red flags accurately.
+                      Contextual information helps refine triage urgency and safety precautions accurately.
                     </p>
                   </div>
 
@@ -447,7 +485,7 @@ export const SymptomTriage: React.FC = () => {
                     >
                       {isLoading ? (
                         <>
-                          <Loader2 className="w-4 h-4 animate-spin" /> Evaluating Evidence-Based Guidance...
+                          <Loader2 className="w-4 h-4 animate-spin" /> Evaluating Evidence-Grounded Guidance...
                         </>
                       ) : (
                         <>
@@ -478,16 +516,16 @@ export const SymptomTriage: React.FC = () => {
                       }`}
                     >
                       {triageResult.urgency === 'EMERGENCY' ? <AlertOctagon className="w-3.5 h-3.5 text-rose-600" /> : <Activity className="w-3.5 h-3.5" />}
-                      Urgency Level: {triageResult.urgency}
+                      Urgency: {triageResult.urgency}
                     </span>
 
                     <span className="text-[11px] text-slate-400 font-medium">
-                      {triageResult.isRealAI ? '⚡ Evaluated with Google Gemini 1.5 Flash' : '📋 Clinical Decision Support Protocol'}
+                      {triageResult.isRealAI ? '⚡ Evidence-Grounded Gemini AI' : '🛡️ Safety Triage Protocol'}
                     </span>
                   </div>
 
                   <h3 className="text-lg font-bold text-slate-900 dark:text-white mt-2 leading-snug">
-                    {triageResult.summary}
+                    {triageResult.symptom_summary}
                   </h3>
                 </div>
 
@@ -504,10 +542,10 @@ export const SymptomTriage: React.FC = () => {
                 <div className="p-5 rounded-2xl bg-rose-50 dark:bg-rose-950/60 border-2 border-rose-500 text-rose-900 dark:text-rose-200 space-y-3">
                   <div className="flex items-center gap-2 text-rose-700 dark:text-rose-300 font-bold text-sm">
                     <AlertOctagon className="w-5 h-5 text-rose-600 flex-shrink-0" />
-                    <span>This may require urgent medical attention.</span>
+                    <span>These symptoms may require urgent medical attention.</span>
                   </div>
                   <p className="text-xs text-rose-800 dark:text-rose-300 leading-relaxed">
-                    Life-threatening symptoms or high-risk red flags have been detected. Please contact national emergency services or proceed immediately to HIMS Hassan Trauma Centre.
+                    Life-threatening symptoms or acute red flags have been detected. Please contact national emergency services or proceed immediately to the HIMS Hassan Emergency Trauma Unit.
                   </p>
                   <div className="flex flex-wrap items-center gap-2 pt-1">
                     <a
@@ -526,13 +564,13 @@ export const SymptomTriage: React.FC = () => {
                       onClick={() => setIsEmergencyModalOpen(true)}
                       className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-black text-white font-bold text-xs flex items-center gap-1.5 shadow-md"
                     >
-                      <HeartPulse className="w-3.5 h-3.5 text-rose-400" /> Campus Emergency / First Aid
+                      <HeartPulse className="w-3.5 h-3.5 text-rose-400" /> Campus First Aid
                     </button>
                   </div>
                 </div>
               )}
 
-              {/* Possible Causes to Discuss with a Clinician */}
+              {/* SECTION: Possible Causes to Discuss with a Clinician */}
               <div>
                 <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-3 flex items-center gap-1.5">
                   <ShieldCheck className="w-4 h-4 text-primary-500" />
@@ -556,7 +594,7 @@ export const SymptomTriage: React.FC = () => {
                 </div>
               </div>
 
-              {/* What To Do Now & Recommended Action */}
+              {/* SECTION: What To Do Now */}
               <div className="p-4 rounded-xl bg-blue-50/60 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900 space-y-2">
                 <h4 className="font-bold text-xs text-blue-900 dark:text-blue-200 flex items-center gap-1.5">
                   <Activity className="w-4 h-4 text-blue-600" /> What To Do Now:
@@ -569,13 +607,47 @@ export const SymptomTriage: React.FC = () => {
                 </div>
               </div>
 
-              {/* Red-Flag Symptoms Warnings */}
-              {triageResult.red_flags && triageResult.red_flags.length > 0 && (
-                <div className="p-4 rounded-xl bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 space-y-2">
+              {/* SECTION: Common OTC Options */}
+              {triageResult.common_otc_options && triageResult.common_otc_options.length > 0 && (
+                <div className="p-4 rounded-xl bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900/60 space-y-2">
+                  <h4 className="font-bold text-xs text-emerald-900 dark:text-emerald-200 flex items-center gap-1.5">
+                    <Pill className="w-4 h-4 text-emerald-600" /> Common OTC Options (General Supportive Information):
+                  </h4>
+                  <ul className="space-y-1 text-xs text-emerald-800 dark:text-emerald-300">
+                    {triageResult.common_otc_options.map((opt, idx) => (
+                      <li key={idx} className="flex items-start gap-1.5">
+                        <span className="font-bold">&bull;</span>
+                        <span>{opt}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* SECTION: Precautions */}
+              {triageResult.medicine_precautions && triageResult.medicine_precautions.length > 0 && (
+                <div className="p-4 rounded-xl bg-amber-50/50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/60 space-y-2">
                   <h4 className="font-bold text-xs text-amber-900 dark:text-amber-200 flex items-center gap-1.5">
-                    <AlertTriangle className="w-4 h-4 text-amber-600" /> Red-Flag Warning Signs:
+                    <ShieldAlert className="w-4 h-4 text-amber-600" /> Precautions & Important Warnings:
                   </h4>
                   <ul className="space-y-1 text-xs text-amber-800 dark:text-amber-300">
+                    {triageResult.medicine_precautions.map((prec, idx) => (
+                      <li key={idx} className="flex items-start gap-1.5">
+                        <span className="font-bold">&bull;</span>
+                        <span>{prec}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* SECTION: Red Flags */}
+              {triageResult.red_flags && triageResult.red_flags.length > 0 && (
+                <div className="p-4 rounded-xl bg-rose-50/50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900/60 space-y-2">
+                  <h4 className="font-bold text-xs text-rose-900 dark:text-rose-200 flex items-center gap-1.5">
+                    <AlertTriangle className="w-4 h-4 text-rose-600" /> Red-Flag Symptoms:
+                  </h4>
+                  <ul className="space-y-1 text-xs text-rose-800 dark:text-rose-300">
                     {triageResult.red_flags.map((flag, idx) => (
                       <li key={idx} className="flex items-start gap-1.5">
                         <span className="font-bold">&bull;</span>
@@ -586,24 +658,7 @@ export const SymptomTriage: React.FC = () => {
                 </div>
               )}
 
-              {/* Supportive Self-Care Guidelines */}
-              {triageResult.self_care && triageResult.self_care.length > 0 && (
-                <div>
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">
-                    Supportive Self-Care Guidelines
-                  </h4>
-                  <ul className="space-y-2 text-xs text-slate-600 dark:text-slate-300">
-                    {triageResult.self_care.map((note, idx) => (
-                      <li key={idx} className="flex items-start gap-2">
-                        <CheckCircle2 className="w-4 h-4 text-tealAccent-500 flex-shrink-0 mt-0.5" />
-                        <span>{note}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {/* Doctor Directory Recommendation Section */}
+              {/* SECTION: Recommended Specialist & Doctor Directory Mapping */}
               <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 space-y-3">
                 <div className="flex items-center justify-between">
                   <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
@@ -643,23 +698,23 @@ export const SymptomTriage: React.FC = () => {
                           to={`/appointments/book?doctorId=${doc.id}&specialty=${encodeURIComponent(doc.specialization)}`}
                           className="px-3 py-1.5 rounded-lg bg-primary-600 hover:bg-primary-700 text-white font-bold text-xs flex items-center gap-1 shadow-sm flex-shrink-0"
                         >
-                          <Calendar className="w-3.5 h-3.5" /> Book
+                          <Calendar className="w-3.5 h-3.5" /> Book Consultation
                         </Link>
                       </div>
                     ))}
                   </div>
                 ) : (
                   <div className="p-3 bg-amber-50 dark:bg-amber-950/40 rounded-lg text-xs text-amber-800 dark:text-amber-200">
-                    Specialist currently unavailable in CampusCare directory. Please visit HIMS Hassan OPD or consult the on-duty campus medical officer.
+                    Specialist currently unavailable in CampusCare directory. Please visit HIMS Hassan / District Hospital OPD or consult the on-duty campus medical officer.
                   </div>
                 )}
               </div>
 
-              {/* Authoritative Sources */}
+              {/* SECTION: Trusted Sources */}
               {triageResult.sources && triageResult.sources.length > 0 && (
                 <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
                   <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2 flex items-center gap-1">
-                    <BookOpen className="w-3.5 h-3.5" /> Authoritative Medical Information Sources
+                    <BookOpen className="w-3.5 h-3.5" /> Trusted Medical Sources
                   </h4>
                   <div className="flex flex-wrap gap-2">
                     {triageResult.sources.map((src, idx) => (
@@ -670,7 +725,7 @@ export const SymptomTriage: React.FC = () => {
                         rel="noopener noreferrer"
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-[11px] font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-200 transition-all border border-slate-200 dark:border-slate-700"
                       >
-                        <span>{src.title} ({src.organization})</span>
+                        <span>{src.name}</span>
                         <ExternalLink className="w-3 h-3 text-slate-400" />
                       </a>
                     ))}
@@ -689,14 +744,14 @@ export const SymptomTriage: React.FC = () => {
                   to="/appointments/book"
                   className="px-6 py-3 rounded-xl bg-primary-600 hover:bg-primary-700 text-white font-bold text-xs shadow-md flex items-center gap-2"
                 >
-                  <Calendar className="w-4 h-4" /> Book Doctor Consultation
+                  <Calendar className="w-4 h-4" /> Book Consultation
                 </Link>
 
                 <button
                   onClick={() => setIsEmergencyModalOpen(true)}
                   className="px-5 py-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-800 dark:text-slate-200 font-bold text-xs flex items-center gap-2 border border-slate-200 dark:border-slate-700"
                 >
-                  <HeartPulse className="w-4 h-4 text-rose-500" /> Campus Emergency SOS
+                  <HeartPulse className="w-4 h-4 text-rose-500" /> Campus Emergency / First Aid
                 </button>
               </div>
             </div>
@@ -710,10 +765,10 @@ export const SymptomTriage: React.FC = () => {
           <div>
             <h3 className="font-bold text-base text-slate-900 dark:text-white flex items-center gap-2">
               <Pill className="w-5 h-5 text-emerald-600" />
-              Authoritative Medicine Information
+              Evidence-Based Medicine Information
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-              Look up general use, contraindications, cautions, and verified drug facts from MedlinePlus / WHO.
+              Look up general use, warnings, precautions, side effects, and exact authoritative source pages (MedlinePlus / WHO).
             </p>
           </div>
 
@@ -735,16 +790,16 @@ export const SymptomTriage: React.FC = () => {
             </button>
           </form>
 
-          {/* Preset Medicine Suggestions */}
+          {/* Quick Suggestions */}
           <div className="flex flex-wrap items-center gap-2 text-xs">
-            <span className="text-slate-400 text-[11px] font-medium">Quick suggestions:</span>
+            <span className="text-slate-400 text-[11px] font-medium">Common medications:</span>
             {['Paracetamol', 'Ibuprofen', 'Cetirizine', 'Oral Rehydration Salts (ORS)'].map(med => (
               <button
                 key={med}
                 type="button"
                 onClick={() => {
                   setMedicineQuery(med);
-                  aiService.queryMedicine(med).then(res => setMedicineResults(res));
+                  aiService.queryMedicine(med).then(res => setMedicineResults(res)).catch(() => {});
                 }}
                 className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-semibold hover:bg-emerald-50 hover:text-emerald-700 dark:hover:bg-emerald-950/50 border border-slate-200 dark:border-slate-700"
               >
@@ -752,6 +807,14 @@ export const SymptomTriage: React.FC = () => {
               </button>
             ))}
           </div>
+
+          {/* Medicine Search Error */}
+          {medicineError && (
+            <div className="p-4 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900 text-xs text-amber-800 dark:text-amber-200 flex items-center gap-2">
+              <Info className="w-4 h-4 text-amber-600 flex-shrink-0" />
+              <span>{medicineError}</span>
+            </div>
+          )}
 
           {/* Medicine Results */}
           {medicineResults && medicineResults.length > 0 && (
@@ -767,7 +830,7 @@ export const SymptomTriage: React.FC = () => {
                       {med.name}
                     </h4>
                     <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950 px-2 py-0.5 rounded">
-                      Verified Drug Information
+                      Authoritative Drug Information
                     </span>
                   </div>
 
@@ -777,8 +840,15 @@ export const SymptomTriage: React.FC = () => {
                       <p className="text-slate-600 dark:text-slate-400">{med.general_use}</p>
                     </div>
 
+                    {med.warnings && (
+                      <div>
+                        <strong className="block text-rose-700 dark:text-rose-400 mb-0.5">Warnings:</strong>
+                        <p className="text-slate-600 dark:text-slate-400">{med.warnings}</p>
+                      </div>
+                    )}
+
                     <div>
-                      <strong className="block text-slate-700 dark:text-slate-300 mb-0.5">Cautions:</strong>
+                      <strong className="block text-amber-700 dark:text-amber-400 mb-0.5">Precautions:</strong>
                       <p className="text-slate-600 dark:text-slate-400">{med.cautions}</p>
                     </div>
 
@@ -787,20 +857,31 @@ export const SymptomTriage: React.FC = () => {
                       <p className="text-slate-600 dark:text-slate-400">{med.side_effects}</p>
                     </div>
 
-                    <div>
-                      <strong className="block text-slate-700 dark:text-slate-300 mb-0.5">Interaction Warnings:</strong>
+                    <div className="md:col-span-2">
+                      <strong className="block text-slate-700 dark:text-slate-300 mb-0.5">Interaction Information:</strong>
                       <p className="text-slate-600 dark:text-slate-400">{med.interaction_warnings}</p>
                     </div>
                   </div>
 
                   <div className="pt-2 border-t border-slate-200/60 dark:border-slate-700 text-[11px] text-slate-500 dark:text-slate-400 flex items-center justify-between">
                     <span>Source: {med.source}</span>
+                    {med.source_url && (
+                      <a
+                        href={med.source_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-primary-600 dark:text-primary-400 font-semibold hover:underline"
+                      >
+                        <span>View Source Page</span>
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                    )}
                   </div>
                 </div>
               ))}
 
               <div className="p-3 bg-amber-50 dark:bg-amber-950/40 rounded-xl text-xs text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-900">
-                <strong>Safety Notice:</strong> Medication choice depends on your symptoms, medical history, allergies, current medicines, age and other factors. Please consult a qualified healthcare professional.
+                <strong>Safety Notice:</strong> Medication choice depends on your symptoms, medical history, allergies, current medicines, age and other clinical factors. Please consult a qualified healthcare professional.
               </div>
             </div>
           )}

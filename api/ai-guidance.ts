@@ -23,40 +23,38 @@ function checkRateLimit(ip: string): boolean {
 }
 
 // Authoritative medical reference database
-const AUTHORITATIVE_SOURCES_MAP: Record<string, { title: string; url: string; organization: string }[]> = {
+const TRUSTED_SOURCES_MAP: Record<string, { name: string; url: string }[]> = {
   general: [
-    { title: 'MedlinePlus Health Topics & Symptoms', url: 'https://medlineplus.gov/all_healthtopics.html', organization: 'National Library of Medicine (NIH)' },
-    { title: 'WHO Health Topics & Guidance', url: 'https://www.who.int/health-topics', organization: 'World Health Organization' }
-  ],
-  respiratory: [
-    { title: 'MedlinePlus: Common Cold & Upper Respiratory Infections', url: 'https://medlineplus.gov/commoncold.html', organization: 'MedlinePlus / NIH' },
-    { title: 'WHO: Influenza and Seasonal Respiratory Illnesses', url: 'https://www.who.int/news-room/fact-sheets/detail/influenza-(seasonal)', organization: 'World Health Organization' }
-  ],
-  fever: [
-    { title: 'MedlinePlus: Fever Evaluation & Supportive Care', url: 'https://medlineplus.gov/fever.html', organization: 'MedlinePlus / NIH' },
-    { title: 'CDC: Fever Guidance and Clinical Overview', url: 'https://www.cdc.gov/', organization: 'Centers for Disease Control and Prevention' }
-  ],
-  skin: [
-    { title: 'MedlinePlus: Skin Conditions & Rashes', url: 'https://medlineplus.gov/skinconditions.html', organization: 'MedlinePlus / NIH' }
-  ],
-  gastrointestinal: [
-    { title: 'MedlinePlus: Digestive Disorders & Gastroenteritis', url: 'https://medlineplus.gov/digestivediseases.html', organization: 'MedlinePlus / NIH' },
-    { title: 'WHO: Diarrhoeal Disease Factsheet', url: 'https://www.who.int/news-room/fact-sheets/detail/diarrhoeal-disease', organization: 'World Health Organization' }
+    { name: 'MedlinePlus: Health Topics Directory', url: 'https://medlineplus.gov/all_healthtopics.html' },
+    { name: 'WHO: World Health Organization Health Topics', url: 'https://www.who.int/health-topics' }
   ],
   headache: [
-    { title: 'MedlinePlus: Headache & Migraine Overview', url: 'https://medlineplus.gov/headache.html', organization: 'MedlinePlus / NIH' },
-    { title: 'WHO: Headache Disorders', url: 'https://www.who.int/news-room/fact-sheets/detail/headache-disorders', organization: 'World Health Organization' }
+    { name: 'MedlinePlus: Headache Overview & Types', url: 'https://medlineplus.gov/headache.html' },
+    { name: 'WHO: Headache Disorders Factsheet', url: 'https://www.who.int/news-room/fact-sheets/detail/headache-disorders' }
   ],
-  musculoskeletal: [
-    { title: 'MedlinePlus: Sprains, Strains, and Joint Pain', url: 'https://medlineplus.gov/sprainsandstrains.html', organization: 'MedlinePlus / NIH' }
+  fever: [
+    { name: 'MedlinePlus: Fever Evaluation & Home Care', url: 'https://medlineplus.gov/fever.html' },
+    { name: 'CDC: Clinical Guidance for Fever', url: 'https://www.cdc.gov/' }
   ],
-  mental_health: [
-    { title: 'MedlinePlus: Stress, Anxiety, and Mood Support', url: 'https://medlineplus.gov/mentalhealthandbehavior.html', organization: 'MedlinePlus / NIH' },
-    { title: 'WHO: Mental Health Guidelines', url: 'https://www.who.int/health-topics/mental-health', organization: 'World Health Organization' }
+  respiratory: [
+    { name: 'MedlinePlus: Common Cold & Upper Respiratory Infections', url: 'https://medlineplus.gov/commoncold.html' },
+    { name: 'WHO: Influenza (Seasonal) Clinical Factsheet', url: 'https://www.who.int/news-room/fact-sheets/detail/influenza-(seasonal)' }
+  ],
+  skin: [
+    { name: 'MedlinePlus: Skin Conditions & Rashes', url: 'https://medlineplus.gov/skinconditions.html' },
+    { name: 'MedlinePlus: Itching (Pruritus)', url: 'https://medlineplus.gov/itching.html' }
+  ],
+  back_pain: [
+    { name: 'MedlinePlus: Back Pain Overview & Self-Care', url: 'https://medlineplus.gov/backpain.html' },
+    { name: 'NIAMS / NIH: Low Back Pain Clinical Information', url: 'https://www.niams.nih.gov/health-topics/back-pain' }
+  ],
+  gastrointestinal: [
+    { name: 'MedlinePlus: Digestive Diseases & Gastroenteritis', url: 'https://medlineplus.gov/digestivediseases.html' },
+    { name: 'WHO: Diarrhoeal Disease Management', url: 'https://www.who.int/news-room/fact-sheets/detail/diarrhoeal-disease' }
   ],
   emergency: [
-    { title: 'HIMS Hassan Emergency Trauma Line & Services', url: 'https://hims-hassan.karnataka.gov.in', organization: 'Hassan Institute of Medical Sciences' },
-    { title: 'WHO: Emergency Triage and Clinical Assessment', url: 'https://www.who.int/emergencies', organization: 'World Health Organization' }
+    { name: 'Hassan Institute of Medical Sciences (HIMS Hassan) Emergency Care', url: 'https://hims-hassan.karnataka.gov.in' },
+    { name: 'WHO: Emergency Triage Guidelines', url: 'https://www.who.int/emergencies' }
   ]
 };
 
@@ -64,67 +62,83 @@ const AUTHORITATIVE_SOURCES_MAP: Record<string, { title: string; url: string; or
 const VERIFIED_MEDICINE_DATABASE: Record<string, {
   name: string;
   general_use: string;
+  warnings: string;
   cautions: string;
   side_effects: string;
   interaction_warnings: string;
   source: string;
+  source_url: string;
 }> = {
   paracetamol: {
     name: 'Paracetamol (Acetaminophen)',
-    general_use: 'Commonly used for temporary relief of mild-to-moderate pain and fever reduction.',
-    cautions: 'Do not exceed maximum daily dosage (typically 4000mg/24h in adults). Caution in liver impairment and chronic alcohol use.',
-    side_effects: 'Rare when used appropriately; severe allergic reaction or liver toxicity in overdose.',
-    interaction_warnings: 'Avoid combining with other paracetamol-containing combination products to prevent accidental overdose.',
-    source: 'MedlinePlus Drug Information (https://medlineplus.gov/druginfo/meds/a681004.html)'
+    general_use: 'Used for temporary relief of mild-to-moderate pain and reduction of fever.',
+    warnings: 'Severe liver damage may occur if you take more than 4,000 mg in 24 hours or consume alcohol while taking this medicine.',
+    cautions: 'Do not exceed maximum daily dosage. Exercise caution in pre-existing liver disease or severe renal impairment.',
+    side_effects: 'Generally mild when taken as directed; allergic reactions, skin rash, or liver toxicity in overdose.',
+    interaction_warnings: 'Do not take with any other medicine containing paracetamol or acetaminophen to prevent accidental overdose.',
+    source: 'MedlinePlus Drug Information',
+    source_url: 'https://medlineplus.gov/druginfo/meds/a681004.html'
+  },
+  acetaminophen: {
+    name: 'Paracetamol (Acetaminophen)',
+    general_use: 'Used for temporary relief of mild-to-moderate pain and reduction of fever.',
+    warnings: 'Severe liver damage may occur if you take more than 4,000 mg in 24 hours or consume alcohol while taking this medicine.',
+    cautions: 'Do not exceed maximum daily dosage. Exercise caution in pre-existing liver disease or severe renal impairment.',
+    side_effects: 'Generally mild when taken as directed; allergic reactions, skin rash, or liver toxicity in overdose.',
+    interaction_warnings: 'Do not take with any other medicine containing paracetamol or acetaminophen to prevent accidental overdose.',
+    source: 'MedlinePlus Drug Information',
+    source_url: 'https://medlineplus.gov/druginfo/meds/a681004.html'
   },
   ibuprofen: {
     name: 'Ibuprofen',
-    general_use: 'Nonsteroidal anti-inflammatory drug (NSAID) used for pain relief, inflammation reduction, and fever reduction.',
-    cautions: 'Take with or after food. Use with caution in individuals with stomach ulcers, asthma, kidney disorders, or cardiovascular risk.',
-    side_effects: 'Stomach upset, heartburn, nausea, dizziness. Long-term use requires medical monitoring.',
-    interaction_warnings: 'Interacts with other NSAIDs, blood thinners (anticoagulants), aspirin, and certain blood pressure medications.',
-    source: 'MedlinePlus Drug Information (https://medlineplus.gov/druginfo/meds/a682159.html)'
+    general_use: 'Nonsteroidal anti-inflammatory drug (NSAID) used to relieve pain, reduce inflammation, and lower fever.',
+    warnings: 'May increase the risk of severe stomach ulcers, gastrointestinal bleeding, or cardiovascular events with prolonged high doses.',
+    cautions: 'Always take with food or milk. Avoid in active stomach ulcers, third trimester of pregnancy, severe heart failure, or asthma triggered by NSAIDs.',
+    side_effects: 'Stomach ache, heartburn, nausea, dizziness, indigestion.',
+    interaction_warnings: 'Interacts with aspirin, anticoagulants (blood thinners), other NSAIDs, steroids, and certain blood pressure medications.',
+    source: 'MedlinePlus Drug Information',
+    source_url: 'https://medlineplus.gov/druginfo/meds/a682159.html'
   },
   cetirizine: {
     name: 'Cetirizine',
-    general_use: 'Second-generation antihistamine used to relieve allergy symptoms such as watery eyes, runny nose, sneezing, and hives.',
-    cautions: 'May cause drowsiness in some individuals. Caution when driving or operating machinery. Caution in severe renal impairment.',
-    side_effects: 'Drowsiness, dry mouth, headache, fatigue.',
-    interaction_warnings: 'Alcohol and central nervous system depressants may increase sedative effects.',
-    source: 'MedlinePlus Drug Information (https://medlineplus.gov/druginfo/meds/a698026.html)'
+    general_use: 'Second-generation antihistamine used to relieve allergy symptoms such as watery eyes, runny nose, sneezing, itching, and hives.',
+    warnings: 'May cause drowsiness. Exercise caution when driving or operating machinery.',
+    cautions: 'Use with caution in elderly individuals and patients with moderate-to-severe renal impairment.',
+    side_effects: 'Drowsiness, dry mouth, tiredness, mild headache.',
+    interaction_warnings: 'Avoid alcohol and central nervous system depressants as they can worsen sedation.',
+    source: 'MedlinePlus Drug Information',
+    source_url: 'https://medlineplus.gov/druginfo/meds/a698026.html'
   },
   ors: {
     name: 'Oral Rehydration Salts (ORS)',
-    general_use: 'Standard electrolyte balance formula recommended by WHO for hydration and electrolyte replacement in diarrhea and vomiting.',
-    cautions: 'Dissolve in clean potable water strictly in the correct specified proportion (usually 1 packet per 1 liter). Do not boil after reconstitution.',
-    side_effects: 'Generally safe and well tolerated when prepared accurately.',
-    interaction_warnings: 'No significant drug interactions; essential supportive rehydration therapy.',
-    source: 'WHO Oral Rehydration Salts Fact Sheet (https://www.who.int/news-room/fact-sheets/detail/diarrhoeal-disease)'
+    general_use: 'Electrolyte and fluid replacement solution recommended by WHO for hydration in acute diarrhea, vomiting, and heat exhaustion.',
+    warnings: 'Must be dissolved in the exact specified volume of clean drinking water (usually 1 packet per 1 litre).',
+    cautions: 'Do not boil after reconstitution. Consume within 24 hours of preparation.',
+    side_effects: 'Safe and well tolerated when mixed in the correct water ratio.',
+    interaction_warnings: 'No significant drug interactions; safe for all age groups.',
+    source: 'WHO Diarrhoeal Disease Guidance',
+    source_url: 'https://www.who.int/news-room/fact-sheets/detail/diarrhoeal-disease'
   }
 };
 
-// Red-flag emergency phrases
-const RED_FLAG_PHRASES = [
-  'chest pain',
-  'chest pressure',
-  'loss of consciousness',
-  'unconscious',
-  'fainting',
-  'severe breathing difficulty',
-  'difficulty breathing',
-  'shortness of breath',
-  'sudden paralysis',
-  'face drooping',
-  'slurred speech',
-  'uncontrolled bleeding',
-  'anaphylaxis',
-  'severe allergic reaction',
-  'coughing blood',
-  'vomiting blood',
-  'seizure',
-  'sudden loss of vision',
-  'worst headache of my life',
-  'severe burn'
+// Known common symptoms list to prevent mislabeling symptoms as drugs
+const KNOWN_SYMPTOMS_LIST = [
+  'headache', 'fever', 'cough', 'cold', 'sore throat', 'back pain', 'joint pain',
+  'stomach pain', 'nausea', 'vomiting', 'diarrhea', 'fatigue', 'rash', 'itchy skin',
+  'chest pain', 'shortness of breath', 'dizziness', 'anxiety', 'weakness'
+];
+
+// Red-flag emergency indicators
+const EMERGENCY_RED_FLAGS = [
+  { pattern: /weakness in.*(arm|leg|face|side)/i, reason: 'Sudden limb or facial weakness is a potential stroke warning sign.' },
+  { pattern: /slurred speech|difficulty speaking/i, reason: 'Speech impairment is an acute neurological emergency.' },
+  { pattern: /sudden severe headache|worst headache of my life|thunderclap/i, reason: 'Sudden explosive headache requires immediate intracranial evaluation.' },
+  { pattern: /chest pain|chest pressure|chest tightness|radiating to (left arm|jaw|back)/i, reason: 'Acute chest pain requires immediate cardiac emergency triage.' },
+  { pattern: /shortness of breath|severe breathing difficulty|struggling to breathe/i, reason: 'Acute respiratory distress requires immediate emergency care.' },
+  { pattern: /loss of consciousness|unconscious|fainting|passed out/i, reason: 'Loss of consciousness is a critical red-flag emergency.' },
+  { pattern: /anaphylaxis|throat swelling|severe allergic reaction/i, reason: 'Anaphylaxis requires immediate epinephrine and emergency intervention.' },
+  { pattern: /coughing blood|vomiting blood|uncontrolled bleeding/i, reason: 'Acute active hemorrhage requires emergency trauma care.' },
+  { pattern: /seizure|convulsions/i, reason: 'Active seizure requires emergency clinical management.' }
 ];
 
 function sanitize(str: string): string {
@@ -154,7 +168,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const clientIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.socket.remoteAddress || '127.0.0.1';
   if (!checkRateLimit(clientIp)) {
     return res.status(429).json({
-      error: 'Rate limit exceeded. Please wait a moment before submitting another symptom assessment.'
+      error: 'Rate limit exceeded. Please wait a moment before submitting another request.'
     });
   }
 
@@ -172,34 +186,54 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       medicineQuery = ''
     } = req.body || {};
 
-    // 1. Medicine Information Query Mode
+    // ==========================================
+    // 1. MEDICINE SEARCH MODE
+    // ==========================================
     if (medicineQuery && typeof medicineQuery === 'string') {
-      const qLower = sanitize(medicineQuery).toLowerCase();
-      const matchedKey = Object.keys(VERIFIED_MEDICINE_DATABASE).find(k => qLower.includes(k));
-      
-      let medInfo = matchedKey ? VERIFIED_MEDICINE_DATABASE[matchedKey] : null;
+      const qClean = sanitize(medicineQuery).trim();
+      const qLower = qClean.toLowerCase();
 
-      if (!medInfo) {
-        medInfo = {
-          name: sanitize(medicineQuery),
-          general_use: 'General medication information depends on clinical evaluation and prescription.',
-          cautions: 'Always consult a certified medical practitioner or pharmacist before taking any medication. Do not self-medicate.',
-          side_effects: 'Individual side effects vary by patient history and drug formulation.',
-          interaction_warnings: 'Medication interactions depend on other active medications and existing health conditions.',
-          source: 'MedlinePlus Drug Information (https://medlineplus.gov/druginformation.html)'
-        };
+      // Guard: Do not label a symptom as a drug!
+      const isSymptomWord = KNOWN_SYMPTOMS_LIST.some(s => qLower === s || qLower.includes(s));
+      if (isSymptomWord && !VERIFIED_MEDICINE_DATABASE[qLower]) {
+        return res.status(400).json({
+          error: `"${qClean}" is a medical symptom, not a drug or medication. Please use the Symptom Guidance tool to evaluate this symptom.`
+        });
       }
 
-      return res.status(200).json({
-        medicine_information: [medInfo],
-        disclaimer: 'Medication choice depends on your symptoms, medical history, allergies, current medicines, age, and other clinical factors. Please consult a qualified healthcare professional.'
-      });
+      const matchedKey = Object.keys(VERIFIED_MEDICINE_DATABASE).find(k => qLower.includes(k) || k.includes(qLower));
+
+      if (matchedKey) {
+        const medInfo = VERIFIED_MEDICINE_DATABASE[matchedKey];
+        return res.status(200).json({
+          medicine_information: [medInfo],
+          disclaimer: 'Medication choice depends on your symptoms, medical history, allergies, current medicines, age, and other clinical factors. Please consult a qualified healthcare professional.'
+        });
+      } else {
+        return res.status(200).json({
+          medicine_information: [
+            {
+              name: qClean,
+              general_use: 'General medication information requires prescription and clinical evaluation.',
+              warnings: 'Always consult a certified medical practitioner or pharmacist before taking any medication. Do not self-medicate.',
+              cautions: 'Use strictly as advised by a qualified healthcare professional.',
+              side_effects: 'Individual side effects vary by patient history and drug formulation.',
+              interaction_warnings: 'Medication interactions depend on active ingredients and co-administered drugs.',
+              source: 'MedlinePlus Drug Information Database',
+              source_url: 'https://medlineplus.gov/druginformation.html'
+            }
+          ],
+          disclaimer: 'Medication choice depends on your symptoms, medical history, allergies, current medicines, age, and other clinical factors. Please consult a qualified healthcare professional.'
+        });
+      }
     }
 
-    // 2. Validate Symptom Inputs
+    // ==========================================
+    // 2. INPUT VALIDATION
+    // ==========================================
     const sanitizedSymptoms = Array.isArray(symptoms) ? symptoms.map((s: string) => sanitize(String(s))).filter(Boolean) : [];
-    const sanitizedFreeText = sanitize(String(freeText));
-    const combinedSymptomText = (sanitizedSymptoms.join(' ') + ' ' + sanitizedFreeText).toLowerCase();
+    const sanitizedFreeText = sanitize(String(freeText)).trim();
+    const combinedSymptomText = (sanitizedSymptoms.join(' ') + ' ' + sanitizedFreeText).trim().toLowerCase();
 
     if (sanitizedSymptoms.length === 0 && !sanitizedFreeText) {
       return res.status(400).json({
@@ -210,198 +244,202 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const clampedSeverity = Math.min(Math.max(Number(severity) || 1, 1), 10);
     const clampedDuration = Math.min(Math.max(Number(durationDays) || 1, 1), 365);
 
-    // 3. Safety Layer: Red-Flag Emergency Triage Check
-    const hasRedFlag = RED_FLAG_PHRASES.some(phrase => combinedSymptomText.includes(phrase)) || clampedSeverity >= 9;
-
-    if (hasRedFlag) {
-      return res.status(200).json({
-        summary: 'Potentially life-threatening red-flag symptoms detected requiring immediate emergency intervention.',
-        possible_conditions: [
-          {
-            name: 'Acute Medical Emergency (Requires Immediate Clinical Evaluation)',
-            likelihood: 'High',
-            explanation: 'The reported symptoms include high-risk red-flag indicators that require immediate hospital trauma/casualty evaluation.'
-          }
-        ],
-        urgency: 'EMERGENCY',
-        recommended_action: 'This may require urgent medical attention. Dial 108, contact Campus Security/First Aid, or proceed to the nearest emergency trauma center immediately.',
-        recommended_specialty: 'Emergency Medicine / Casualty (HIMS Hassan)',
-        red_flags: [
-          'Acute severe pain, sudden paralysis, respiratory distress, or loss of consciousness',
-          'Do not drive or transport alone; call for immediate assistance',
-          'Emergency contact: HIMS Hassan (+91 8172 231500) or National Emergency (112 / 108)'
-        ],
-        self_care: [
-          'Stay calm and sit or lie in a comfortable, safe position.',
-          'Loosen any tight clothing around the neck or chest.',
-          'Do not ingest food, drinks, or self-prescribed medications until evaluated by clinicians.'
-        ],
-        emergency: true,
-        sources: AUTHORITATIVE_SOURCES_MAP.emergency,
-        disclaimer: 'This tool provides general health guidance and does not replace diagnosis, treatment, or emergency care from a qualified healthcare professional.',
-        provider: 'clinical-safety-guardrail',
-        isRealAI: false
-      });
-    }
-
-    // 4. Secure Gemini API Call (Server-side Secret)
-    const apiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || '';
-
-    if (apiKey && apiKey.length > 10) {
-      try {
-        const systemPrompt = `You are a clinical decision-support and educational health guidance assistant for CampusCare at Malnad College of Engineering (MCE), Hassan, Karnataka.
-Analyze the user's reported symptoms and follow-up data.
-
-CRITICAL MEDICAL SAFETY RULES:
-1. NEVER claim a definitive diagnosis. Always state: "Possible causes to discuss with a healthcare professional".
-2. NEVER prescribe medications or dosage instructions.
-3. If low/moderate risk, provide supportive self-care advice (hydration, rest, observation, when to seek care).
-4. Identify any red-flag symptoms that should prompt immediate medical review.
-5. Recommend the appropriate medical specialty (e.g., General Medicine, Dermatology, Orthopedics, ENT, Psychiatry / Mental Health, Ophthalmology, Gynecology).
-6. Set urgency strictly to one of: "LOW", "MODERATE", "URGENT", "EMERGENCY".
-7. Always respond in strict JSON matching the schema below.
-
-Patient Context:
-- Symptoms: ${sanitizedSymptoms.join(', ')}
-- Description: ${sanitizedFreeText || 'None provided'}
-- Severity (1-10): ${clampedSeverity}
-- Duration (days): ${clampedDuration}
-- Demographics: ${sanitize(ageGroup)}
-- Medical History / Conditions: ${medicalConditions.map((c: string) => sanitize(c)).join(', ') || 'None reported'}
-- Current Medications: ${sanitize(currentMedications) || 'None reported'}
-- Allergies: ${sanitize(allergies) || 'None reported'}
-- Pregnancy status: ${sanitize(pregnancyStatus)}
-
-JSON Output Schema:
-{
-  "summary": "1-2 sentence clinical summary of reported symptoms",
-  "possible_conditions": [
-    { "name": "Condition name", "likelihood": "Low" | "Possible" | "Moderate" | "High", "explanation": "Brief explanation to discuss with a doctor" }
-  ],
-  "urgency": "LOW" | "MODERATE" | "URGENT" | "EMERGENCY",
-  "recommended_action": "Clear, practical guidance on next steps",
-  "recommended_specialty": "Specialty name",
-  "red_flags": ["Specific warning signs to watch for"],
-  "self_care": ["General supportive guidance e.g. hydration, rest, symptom monitoring"],
-  "emergency": false,
-  "sources": [
-    { "title": "Source title", "url": "Authoritative URL", "organization": "MedlinePlus / WHO / CDC / ICMR" }
-  ],
-  "disclaimer": "This tool provides general health guidance and does not replace diagnosis, treatment, or emergency care from a qualified healthcare professional."
-}`;
-
-        const geminiRes = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              contents: [{ parts: [{ text: systemPrompt }] }],
-              generationConfig: { responseMimeType: 'application/json' }
-            })
-          }
-        );
-
-        if (geminiRes.ok) {
-          const geminiData = await geminiRes.json();
-          const rawText = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text;
-
-          if (rawText) {
-            const parsed = JSON.parse(rawText);
-
-            // Validations & Defaults
-            const urgency: 'LOW' | 'MODERATE' | 'URGENT' | 'EMERGENCY' = ['LOW', 'MODERATE', 'URGENT', 'EMERGENCY'].includes(parsed.urgency)
-              ? parsed.urgency
-              : clampedSeverity >= 7 ? 'URGENT' : clampedSeverity >= 4 ? 'MODERATE' : 'LOW';
-
-            // Select matching authoritative sources
-            const matchedSources = [
-              ...AUTHORITATIVE_SOURCES_MAP.general,
-              ...(combinedSymptomText.includes('cough') || combinedSymptomText.includes('cold') || combinedSymptomText.includes('throat') ? AUTHORITATIVE_SOURCES_MAP.respiratory : []),
-              ...(combinedSymptomText.includes('fever') ? AUTHORITATIVE_SOURCES_MAP.fever : []),
-              ...(combinedSymptomText.includes('skin') || combinedSymptomText.includes('rash') ? AUTHORITATIVE_SOURCES_MAP.skin : []),
-              ...(combinedSymptomText.includes('headache') ? AUTHORITATIVE_SOURCES_MAP.headache : []),
-              ...(combinedSymptomText.includes('stomach') || combinedSymptomText.includes('nausea') ? AUTHORITATIVE_SOURCES_MAP.gastrointestinal : []),
-              ...(combinedSymptomText.includes('joint') || combinedSymptomText.includes('pain') ? AUTHORITATIVE_SOURCES_MAP.musculoskeletal : [])
-            ].slice(0, 3);
-
-            return res.status(200).json({
-              summary: sanitize(parsed.summary || 'Symptom analysis completed.'),
-              possible_conditions: Array.isArray(parsed.possible_conditions)
-                ? parsed.possible_conditions.slice(0, 4).map((c: any) => ({
-                    name: sanitize(c.name || 'Observation'),
-                    likelihood: ['Low', 'Possible', 'Moderate', 'High'].includes(c.likelihood) ? c.likelihood : 'Possible',
-                    explanation: sanitize(c.explanation || '')
-                  }))
-                : [],
-              urgency,
-              recommended_action: sanitize(parsed.recommended_action || 'Consult with a qualified healthcare professional.'),
-              recommended_specialty: sanitize(parsed.recommended_specialty || 'General Medicine'),
-              red_flags: Array.isArray(parsed.red_flags) ? parsed.red_flags.map((r: any) => sanitize(String(r))) : [],
-              self_care: Array.isArray(parsed.self_care) ? parsed.self_care.map((s: any) => sanitize(String(s))) : [],
-              medicine_information: null,
-              emergency: urgency === 'EMERGENCY',
-              sources: matchedSources,
-              disclaimer: 'This tool provides general health guidance and does not replace diagnosis, treatment, or emergency care from a qualified healthcare professional.',
-              provider: 'gemini-1.5-flash',
-              isRealAI: true
-            });
-          }
-        }
-      } catch (geminiError) {
-        console.warn('Gemini API call failed, invoking deterministic clinical rule engine:', geminiError);
+    // ==========================================
+    // 3. DETERMINISTIC RED-FLAG SAFETY LAYER
+    // ==========================================
+    let detectedRedFlagReason = '';
+    for (const rf of EMERGENCY_RED_FLAGS) {
+      if (rf.pattern.test(combinedSymptomText)) {
+        detectedRedFlagReason = rf.reason;
+        break;
       }
     }
 
-    // 5. Fallback Deterministic Clinical Rule Engine
-    const urgency = clampedSeverity >= 7 ? 'URGENT' : clampedSeverity >= 4 ? 'MODERATE' : 'LOW';
-    let specialty = 'General Medicine';
-    if (combinedSymptomText.includes('skin') || combinedSymptomText.includes('rash') || combinedSymptomText.includes('itch')) {
-      specialty = 'Dermatology';
-    } else if (combinedSymptomText.includes('joint') || combinedSymptomText.includes('bone') || combinedSymptomText.includes('back')) {
-      specialty = 'Orthopedics';
-    } else if (combinedSymptomText.includes('anxiety') || combinedSymptomText.includes('depress') || combinedSymptomText.includes('stress')) {
-      specialty = 'Psychiatry / Mental Health';
-    } else if (combinedSymptomText.includes('ear') || combinedSymptomText.includes('nose') || combinedSymptomText.includes('throat')) {
-      specialty = 'ENT';
+    if (detectedRedFlagReason || clampedSeverity >= 9) {
+      return res.status(200).json({
+        symptom_summary: 'Acute high-risk red-flag indicators detected requiring immediate emergency medical evaluation.',
+        possible_conditions: [
+          {
+            name: 'Acute Medical Emergency (Requires Immediate Hospital Evaluation)',
+            likelihood: 'High',
+            explanation: detectedRedFlagReason || 'Reported symptoms include severe high-acuity indicators that warrant immediate hospital casualty evaluation.'
+          }
+        ],
+        urgency: 'EMERGENCY',
+        red_flags: [
+          detectedRedFlagReason || 'Severe acute pain, neurological deficit, or respiratory compromise',
+          'Do not drive or transport alone; call for immediate assistance',
+          'Emergency contact: HIMS Hassan (+91 8172 231500) or National Emergency (112 / 108)'
+        ],
+        recommended_action: 'These symptoms may require urgent medical attention. Dial 112 or 108 immediately, or proceed to the HIMS Hassan Emergency Trauma Unit without delay.',
+        recommended_specialty: 'Emergency Medicine / Casualty (HIMS Hassan)',
+        common_otc_options: [
+          'Do NOT take oral medications or self-prescribe OTC drugs during an acute emergency before professional clinical evaluation.'
+        ],
+        medicine_precautions: [
+          'Keep patient seated or lying down comfortably.',
+          'Loosen restrictive clothing around neck and chest.',
+          'Do not administer food or drink.'
+        ],
+        sources: TRUSTED_SOURCES_MAP.emergency,
+        emergency: true,
+        disclaimer: 'This tool provides general health guidance and does not replace diagnosis, treatment, or emergency care from a qualified healthcare professional.',
+        isRealAI: false,
+        provider: 'deterministic-red-flag-engine'
+      });
     }
 
-    return res.status(200).json({
-      summary: 'Evaluated ' + sanitizedSymptoms.length + ' reported symptoms with duration of ~' + clampedDuration + ' day(s).',
-      possible_conditions: [
+    // ==========================================
+    // 4. EVIDENCE RETRIEVAL FOR SYMPTOMS
+    // ==========================================
+    let matchedSources = [...TRUSTED_SOURCES_MAP.general];
+    if (combinedSymptomText.includes('headache')) {
+      matchedSources = [...TRUSTED_SOURCES_MAP.headache, ...matchedSources];
+    }
+    if (combinedSymptomText.includes('fever')) {
+      matchedSources = [...TRUSTED_SOURCES_MAP.fever, ...matchedSources];
+    }
+    if (combinedSymptomText.includes('cough') || combinedSymptomText.includes('cold') || combinedSymptomText.includes('throat')) {
+      matchedSources = [...TRUSTED_SOURCES_MAP.respiratory, ...matchedSources];
+    }
+    if (combinedSymptomText.includes('skin') || combinedSymptomText.includes('itch') || combinedSymptomText.includes('rash')) {
+      matchedSources = [...TRUSTED_SOURCES_MAP.skin, ...matchedSources];
+    }
+    if (combinedSymptomText.includes('back') || combinedSymptomText.includes('spine')) {
+      matchedSources = [...TRUSTED_SOURCES_MAP.back_pain, ...matchedSources];
+    }
+    if (combinedSymptomText.includes('stomach') || combinedSymptomText.includes('diarrhea') || combinedSymptomText.includes('vomit')) {
+      matchedSources = [...TRUSTED_SOURCES_MAP.gastrointestinal, ...matchedSources];
+    }
+    const finalSources = matchedSources.slice(0, 3);
+
+    // ==========================================
+    // 5. SECURE GEMINI API CALL
+    // ==========================================
+    const apiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || '';
+
+    if (!apiKey || apiKey.length < 10) {
+      // If Gemini is not configured, do not fake an AI answer:
+      return res.status(503).json({
+        error: 'AI Health Guidance is currently unavailable. Please consult a doctor or contact Campus Health Centre.'
+      });
+    }
+
+    const systemPrompt = `You are an evidence-based clinical decision-support and health guidance assistant for CampusCare at Malnad College of Engineering (MCE), Hassan, Karnataka.
+Analyze the user's reported symptoms and follow-up clinical context.
+
+CRITICAL MEDICAL SAFETY RULES:
+1. NEVER claim a definitive diagnosis. Always state: "Possible causes to discuss with a healthcare professional".
+2. NEVER generate individualized prescriptions or dosing schedules.
+3. For common non-emergency symptoms, list general supportive measures and phrase OTC options strictly as: "Common OTC options that may be used for this symptom include..."
+4. Explicitly include precautions (e.g. taking NSAIDs with food, not exceeding paracetamol max doses, consulting doctor if symptoms persist).
+5. Recommend the appropriate medical specialty from: General Medicine, Dermatology, Orthopedics, ENT, Psychiatry / Mental Health, Ophthalmology, Gynecology.
+6. Urgency must be strictly one of: "LOW", "MODERATE", "URGENT", "EMERGENCY".
+7. Always respond in strict JSON matching the exact schema below.
+
+Patient Context:
+- Reported Symptoms: ${sanitizedSymptoms.join(', ') || 'See description'}
+- Description: ${sanitizedFreeText || 'None'}
+- Severity (1-10): ${clampedSeverity}
+- Duration: ${clampedDuration} day(s)
+- Demographics: ${sanitize(ageGroup)}
+- Pre-existing Conditions: ${medicalConditions.map((c: string) => sanitize(c)).join(', ') || 'None reported'}
+- Current Medications: ${sanitize(currentMedications) || 'None reported'}
+- Allergies: ${sanitize(allergies) || 'None reported'}
+- Pregnancy Status: ${sanitize(pregnancyStatus)}
+
+Evidence Sources Available:
+${finalSources.map(s => `- ${s.name} (${s.url})`).join('\n')}
+
+JSON Schema:
+{
+  "symptom_summary": "1-2 sentence clinical summary of reported symptoms",
+  "possible_conditions": [
+    { "name": "Condition name", "likelihood": "Low" | "Possible" | "Moderate" | "High", "explanation": "Brief clinical explanation to discuss with a doctor" }
+  ],
+  "urgency": "LOW" | "MODERATE" | "URGENT" | "EMERGENCY",
+  "red_flags": ["Specific warning signs to watch for"],
+  "recommended_action": "Clear, actionable next steps for the student/patient",
+  "recommended_specialty": "Specialty name (e.g. General Medicine, Dermatology, Orthopedics, Mental Health, ENT)",
+  "common_otc_options": [
+    "Common OTC options that may be used for this symptom include [generic OTC options e.g. Paracetamol, warm saline gargles, hydration]"
+  ],
+  "medicine_precautions": [
+    "Important safety precautions and warnings regarding self-medication"
+  ],
+  "emergency": false,
+  "disclaimer": "This tool provides general health guidance and does not replace diagnosis, treatment, or emergency care from a qualified healthcare professional."
+}`;
+
+    try {
+      const geminiRes = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
         {
-          name: specialty + ' Consultation Evaluation',
-          likelihood: 'Possible',
-          explanation: 'Reported symptoms correspond to common outpatient clinical presentations suitable for physician evaluation.'
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: systemPrompt }] }],
+            generationConfig: { responseMimeType: 'application/json' }
+          })
         }
-      ],
-      urgency,
-      recommended_action: urgency === 'URGENT' 
-        ? 'Schedule a prompt consultation with a doctor at CampusCare or visit HIMS Hassan OPD.'
-        : 'Monitor symptoms, maintain hydration and rest, and book a consultation if symptoms persist.',
-      recommended_specialty: specialty,
-      red_flags: [
-        'High persistent fever (>102°F) not responding to basic measures',
-        'Sudden onset of severe localized pain, shortness of breath, or confusion',
-        'Symptoms worsening significantly after 48-72 hours'
-      ],
-      self_care: [
-        'Maintain adequate hydration with water, warm liquids, or oral rehydration fluids.',
-        'Prioritize sufficient rest and avoid strenuous physical exertion.',
-        'Record temperature and symptom progression to share with your consulting physician.'
-      ],
-      medicine_information: null,
-      emergency: false,
-      sources: AUTHORITATIVE_SOURCES_MAP.general,
-      disclaimer: 'This tool provides general health guidance and does not replace diagnosis, treatment, or emergency care from a qualified healthcare professional.',
-      provider: 'clinical-decision-engine',
-      isRealAI: false
-    });
+      );
+
+      if (!geminiRes.ok) {
+        console.warn('Gemini API HTTP Error:', geminiRes.status);
+        return res.status(503).json({
+          error: 'AI Health Guidance is currently unavailable. Please consult a doctor or contact Campus Health Centre.'
+        });
+      }
+
+      const geminiData = await geminiRes.json();
+      const rawText = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text;
+
+      if (!rawText) {
+        return res.status(502).json({
+          error: 'AI Health Guidance is currently unavailable. Invalid model response.'
+        });
+      }
+
+      const parsed = JSON.parse(rawText);
+
+      // Strict validation of returned structure
+      const urgency: 'LOW' | 'MODERATE' | 'URGENT' | 'EMERGENCY' = ['LOW', 'MODERATE', 'URGENT', 'EMERGENCY'].includes(parsed.urgency)
+        ? parsed.urgency
+        : clampedSeverity >= 7 ? 'URGENT' : clampedSeverity >= 4 ? 'MODERATE' : 'LOW';
+
+      return res.status(200).json({
+        symptom_summary: sanitize(parsed.symptom_summary || parsed.summary || 'Symptom analysis completed.'),
+        possible_conditions: Array.isArray(parsed.possible_conditions)
+          ? parsed.possible_conditions.slice(0, 4).map((c: any) => ({
+              name: sanitize(c.name || 'Clinical Observation'),
+              likelihood: ['Low', 'Possible', 'Moderate', 'High'].includes(c.likelihood) ? c.likelihood : 'Possible',
+              explanation: sanitize(c.explanation || '')
+            }))
+          : [],
+        urgency,
+        red_flags: Array.isArray(parsed.red_flags) ? parsed.red_flags.map((r: any) => sanitize(String(r))) : [],
+        recommended_action: sanitize(parsed.recommended_action || 'Consult with a qualified healthcare professional.'),
+        recommended_specialty: sanitize(parsed.recommended_specialty || 'General Medicine'),
+        common_otc_options: Array.isArray(parsed.common_otc_options) ? parsed.common_otc_options.map((o: any) => sanitize(String(o))) : [],
+        medicine_precautions: Array.isArray(parsed.medicine_precautions) ? parsed.medicine_precautions.map((p: any) => sanitize(String(p))) : [],
+        sources: finalSources,
+        emergency: urgency === 'EMERGENCY',
+        disclaimer: 'This tool provides general health guidance and does not replace diagnosis, treatment, or emergency care from a qualified healthcare professional.',
+        isRealAI: true,
+        provider: 'gemini-1.5-flash'
+      });
+
+    } catch (apiErr: any) {
+      console.error('Gemini call failure:', apiErr);
+      return res.status(503).json({
+        error: 'AI Health Guidance is currently unavailable. Please consult a doctor or contact Campus Health Centre.'
+      });
+    }
 
   } catch (err: any) {
     console.error('Server AI guidance error:', err);
     return res.status(500).json({
-      error: 'Unable to complete health guidance assessment. Please try again or visit Campus Health Centre directly.'
+      error: 'Unable to process health guidance request. Please try again later.'
     });
   }
 }

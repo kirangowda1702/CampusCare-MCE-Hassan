@@ -425,9 +425,10 @@ export interface ChatMessage {
 export type UrgencyLevel = 'LOW' | 'MODERATE' | 'URGENT' | 'EMERGENCY';
 
 export interface AuthoritativeSource {
-  title: string;
+  name: string;
   url: string;
-  organization: string;
+  title?: string;
+  organization?: string;
 }
 
 export interface PossibleCondition {
@@ -439,10 +440,12 @@ export interface PossibleCondition {
 export interface MedicineInfo {
   name: string;
   general_use: string;
+  warnings?: string;
   cautions: string;
   side_effects: string;
   interaction_warnings: string;
   source: string;
+  source_url?: string;
 }
 
 export interface SymptomGuidanceRequest {
@@ -458,18 +461,19 @@ export interface SymptomGuidanceRequest {
 }
 
 export interface SymptomGuidanceResponse {
-  summary: string;
+  symptom_summary: string;
   possible_conditions: PossibleCondition[];
   urgency: UrgencyLevel;
+  red_flags: string[];
   recommended_action: string;
   recommended_specialty: string;
-  red_flags: string[];
-  self_care: string[];
-  medicine_information?: MedicineInfo[] | null;
-  emergency: boolean;
+  common_otc_options: string[];
+  medicine_precautions: string[];
   sources: AuthoritativeSource[];
+  emergency: boolean;
   disclaimer: string;
-  provider?: string;
   isRealAI?: boolean;
+  provider?: string;
 }
+
 
