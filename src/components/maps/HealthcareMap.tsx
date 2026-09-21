@@ -175,6 +175,7 @@ export const HealthcareMap: React.FC<HealthcareMapProps> = ({
 
       const tileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxZoom: 19,
+        subdomains: ['a', 'b', 'c'],
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors'
       });
 
@@ -186,17 +187,44 @@ export const HealthcareMap: React.FC<HealthcareMapProps> = ({
 
       markersLayerRef.current = L.layerGroup().addTo(map);
       mapInstanceRef.current = map;
-    }
 
-    return () => {
-      if (mapInstanceRef.current) {
-        mapInstanceRef.current.remove();
-        mapInstanceRef.current = null;
-        markersLayerRef.current = null;
-        userMarkerRef.current = null;
-      }
-    };
+      // Ensure proper sizing calculations once container is rendered
+      const resizeTimer = setTimeout(() => {
+        if (mapInstanceRef.current) {
+          mapInstanceRef.current.invalidateSize();
+        }
+      }, 250);
+
+      // Handle window resize
+      const handleResize = () => {
+        if (mapInstanceRef.current) {
+          mapInstanceRef.current.invalidateSize();
+        }
+      };
+      window.addEventListener('resize', handleResize);
+
+      return () => {
+        clearTimeout(resizeTimer);
+        window.removeEventListener('resize', handleResize);
+        if (mapInstanceRef.current) {
+          mapInstanceRef.current.remove();
+          mapInstanceRef.current = null;
+          markersLayerRef.current = null;
+          userMarkerRef.current = null;
+        }
+      };
+    }
   }, []);
+
+  // Invalidate size whenever category or facilities change
+  useEffect(() => {
+    if (mapInstanceRef.current) {
+      const timer = setTimeout(() => {
+        mapInstanceRef.current?.invalidateSize();
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [activeCategory, filteredFacilities.length]);
 
   // Update Markers when facilities or filter change
   useEffect(() => {
@@ -396,13 +424,16 @@ export const HealthcareMap: React.FC<HealthcareMapProps> = ({
 
       {/* Main Map & Facility Details Panel */}
       <div className="grid grid-cols-1 lg:grid-cols-12">
-        <div className="lg:col-span-8 relative bg-slate-950 min-h-[420px]" style={{ height }}>
-          {filteredFacilities.length === 0 ? (
-            <div className="w-full h-full flex items-center justify-center text-slate-400 text-xs p-6">
-              No verified healthcare facilities available.
+        <div className="lg:col-span-8 relative bg-slate-100 dark:bg-slate-800 min-h-[420px]" style={{ height }}>
+          <div
+            ref={mapContainerRef}
+            className="w-full h-full z-0 relative"
+            style={{ width: '100%', height: '100%', minHeight: height || '420px' }}
+          />
+          {filteredFacilities.length === 0 && (
+            <div className="absolute inset-0 z-10 flex items-center justify-center bg-slate-100/80 dark:bg-slate-900/80 text-slate-500 text-xs p-6 backdrop-blur-[2px]">
+              No verified healthcare facilities available for the selected category.
             </div>
-          ) : (
-            <div ref={mapContainerRef} className="w-full h-full z-0" />
           )}
         </div>
 
