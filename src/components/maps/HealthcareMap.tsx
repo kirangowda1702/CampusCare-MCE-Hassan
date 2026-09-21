@@ -144,8 +144,8 @@ export const HealthcareMap: React.FC<HealthcareMapProps> = ({
   };
 
   useEffect(() => {
-    if (!envKey || envKey === 'your_google_maps_api_key_here') {
-      setGoogleMapsError('Google Maps API key not configured in .env (VITE_GOOGLE_MAPS_API_KEY). Interactive Hassan City Grid active.');
+    if (!envKey || envKey === 'your_google_maps_api_key_here' || envKey.trim() === '') {
+      setGoogleMapsError('Google Maps is not configured');
       return;
     }
 
@@ -164,11 +164,11 @@ export const HealthcareMap: React.FC<HealthcareMapProps> = ({
 
     const script = document.createElement('script');
     script.id = scriptId;
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${envKey}&callback=initGoogleMapCallback`;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(envKey)}&callback=initGoogleMapCallback&loading=async`;
     script.async = true;
     script.defer = true;
     script.onerror = () => {
-      setGoogleMapsError('Failed to load Google Maps JavaScript API. Please check your API key and network permissions.');
+      setGoogleMapsError('Google Maps is not configured (failed to load Google Maps SDK)');
     };
     document.head.appendChild(script);
 
@@ -363,9 +363,9 @@ export const HealthcareMap: React.FC<HealthcareMapProps> = ({
                 <div className="p-4 rounded-2xl bg-amber-950/60 border border-amber-800 text-amber-200 text-xs flex items-start gap-3">
                   <Info className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
                   <div className="space-y-1">
-                    <p className="font-bold">Google Maps Platform Notice:</p>
-                    <p className="text-[11px] leading-relaxed text-amber-300">
-                      Live Google Maps tiles require <code>VITE_GOOGLE_MAPS_API_KEY</code> to be configured in environment variables. Verified Hassan healthcare coordinates and direct directions links are shown below.
+                    <p className="font-bold text-amber-300">Google Maps is not configured</p>
+                    <p className="text-[11px] leading-relaxed text-amber-200/80">
+                      Live Google Maps tiles require <code>VITE_GOOGLE_MAPS_API_KEY</code> to be configured in Vercel project environment variables. Verified Hassan healthcare coordinates, facility directory, and direct navigation links remain fully active below.
                     </p>
                   </div>
                 </div>
