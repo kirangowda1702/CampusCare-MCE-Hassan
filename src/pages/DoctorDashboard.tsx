@@ -62,9 +62,26 @@ export const DoctorDashboard: React.FC = () => {
 
   const todayStr = new Date().toISOString().split('T')[0];
 
-  const doctorAppointments = appointments.filter(
-    a => user?.doctorId ? (a.doctorId === user.doctorId || a.doctorId === user.id) : true
-  );
+  const doctorAppointments = appointments.filter(a => {
+    if (!user) return true;
+    const targetDocId = (user.doctorId || user.id || '').trim().toUpperCase();
+    const aptDocId = (a.doctorId || '').trim().toUpperCase();
+
+    // 1. Authoritative Doctor ID match (e.g. DOC001 or DOC002)
+    if (user.doctorId && aptDocId === user.doctorId.trim().toUpperCase()) return true;
+    if (user.id && (aptDocId === user.id.trim().toUpperCase() || a.doctorId === user.id)) return true;
+    if (targetDocId && aptDocId === targetDocId) return true;
+
+    // 2. Doctor Name fallback match
+    if (user.fullName && a.doctorName) {
+      const cleanUser = user.fullName.replace(/^(Dr\.|Dr)\s+/i, '').trim().toLowerCase();
+      const cleanDoc = a.doctorName.replace(/^(Dr\.|Dr)\s+/i, '').trim().toLowerCase();
+      if (cleanUser.length >= 3 && cleanDoc.length >= 3 && (cleanUser === cleanDoc || cleanUser.includes(cleanDoc) || cleanDoc.includes(cleanUser))) {
+        return true;
+      }
+    }
+    return false;
+  });
 
   const pendingAppointments = doctorAppointments.filter(a => a.status === 'pending');
   const confirmedAppointments = doctorAppointments.filter(a => a.status === 'confirmed');

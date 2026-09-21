@@ -24,6 +24,46 @@ function setLocalItem(key: string, value: string): void {
   }
 }
 
+function normalizeAppointment(d: any): Appointment {
+  const rawStatus = (d.status || 'pending').toString().toLowerCase();
+  let status: AppointmentStatus = 'pending';
+  if (rawStatus === 'confirmed' || rawStatus === 'accepted') status = 'confirmed';
+  else if (rawStatus === 'rejected' || rawStatus === 'declined') status = 'rejected';
+  else if (rawStatus === 'in_progress') status = 'in_progress';
+  else if (rawStatus === 'completed') status = 'completed';
+  else if (rawStatus === 'cancelled') status = 'cancelled';
+  else if (rawStatus === 'rescheduled') status = 'rescheduled';
+
+  return {
+    id: d.id || d.appointment_id || ('apt-' + Date.now()),
+    bookingId: d.bookingId || d.booking_id || d.id || 'MCE-APT-2026-0000',
+    patientId: d.patientId || d.patient_id || d.student_id || d.user_id || 'usr-student-1',
+    patientName: d.patientName || d.patient_name || d.student_name || 'Rahul Sharma',
+    patientRole: d.patientRole || d.patient_role || 'student',
+    patientEmail: d.patientEmail || d.patient_email || 'student@mcehassan.ac.in',
+    patientPhone: d.patientPhone || d.patient_phone || '+91 98765 43210',
+    patientUSNorEmpId: d.patientUSNorEmpId || d.patient_usn_or_emp_id || d.usn || d.employee_id,
+    doctorId: (d.doctorId || d.doctor_id || 'DOC001').toString(),
+    doctorName: d.doctorName || d.doctor_name || 'Dr. Kiran Gowda',
+    doctorSpecialization: d.doctorSpecialization || d.doctor_specialization || 'General Medicine',
+    doctorAvatar: d.doctorAvatar || d.doctor_avatar || d.avatar_url,
+    serviceId: d.serviceId || d.service_id || 'srv-1',
+    serviceName: d.serviceName || d.service_name || 'General Consultation',
+    appointmentDate: d.appointmentDate || d.appointment_date || d.date || new Date().toISOString().split('T')[0],
+    timeSlot: d.timeSlot || d.time_slot || d.time || '10:00 AM',
+    startTime: d.startTime || d.start_time,
+    endTime: d.endTime || d.end_time,
+    consultationType: (d.consultationType || d.consultation_type || 'video') as any,
+    reason: d.reason || '',
+    symptoms: Array.isArray(d.symptoms) ? d.symptoms : (typeof d.symptoms === 'string' ? JSON.parse(d.symptoms || '[]') : []),
+    status,
+    notes: d.notes,
+    createdAt: d.createdAt || d.created_at || new Date().toISOString(),
+    updatedAt: d.updatedAt || d.updated_at || new Date().toISOString(),
+    isDemo: false
+  };
+}
+
 export const appointmentService = {
   async getAppointments(): Promise<Appointment[]> {
     if (isSupabaseConfigured) {
@@ -32,7 +72,11 @@ export const appointmentService = {
           .from('appointments')
           .select('*')
           .order('created_at', { ascending: false });
-        if (!error && data && data.length > 0) return data as Appointment[];
+        if (!error && data && data.length > 0) {
+          const normalized = data.map(normalizeAppointment);
+          inMemoryAppointments = normalized;
+          return normalized;
+        }
       } catch (err) {
         console.warn('Supabase fetch appointments error:', err);
       }
@@ -40,7 +84,8 @@ export const appointmentService = {
     const saved = getLocalItem(STORAGE_KEY);
     if (saved) {
       try { 
-        inMemoryAppointments = JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        inMemoryAppointments = Array.isArray(parsed) ? parsed.map(normalizeAppointment) : mockAppointments;
         return inMemoryAppointments; 
       } catch (e) { 
         return inMemoryAppointments; 
@@ -70,20 +115,72 @@ export const appointmentService = {
       id: 'apt-' + Date.now(),
       bookingId: `MCE-APT-2026-${randomNum}`,
       ...appointment,
-      status: appointment.status || 'pending',
+      status: appointment.status ? (appointment.status.toLowerCase() as AppointmentStatus) : 'pending',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
 
     if (isSupabaseConfigured) {
       try {
-        await supabase.from('appointments').insert([newApt]);
+        const payload = {
+          id: newApt.id,
+          appointment_id: newApt.id,
+          booking_id: newApt.bookingId,
+          bookingId: newApt.bookingId,
+          student_id: newApt.patientId,
+          patient_id: newApt.patientId,
+          patientId: newApt.patientId,
+          patient_name: newApt.patientName,
+          patientName: newApt.patientName,
+          patient_role: newApt.patientRole,
+          patient_email: newApt.patientEmail,
+          patient_phone: newApt.patientPhone,
+          patient_usn_or_emp_id: newApt.patientUSNorEmpId,
+          doctor_id: newApt.doctorId,
+          doctorId: newApt.doctorId,
+          doctor_name: newApt.doctorName,
+          doctorName: newApt.doctorName,
+          doctor_specialization: newApt.doctorSpecialization,
+          doctor_avatar: newApt.doctorAvatar,
+          service_id: newApt.serviceId,
+          service_name: newApt.serviceName,
+          appointment_date: newApt.appointmentDate,
+          date: newApt.appointmentDate,
+          time_slot: newApt.timeSlot,
+          time: newApt.timeSlot,
+          start_time: newApt.startTime,
+          end_time: newApt.endTime,
+          consultation_type: newApt.consultationType,
+          reason: newApt.reason,
+          symptoms: newApt.symptoms,
+          status: newApt.status,
+          created_at: newApt.createdAt,
+          updated_at: newApt.updatedAt
+        };
+
+        const { error } = await supabase.from('appointments').insert([payload]);
+        if (error) {
+          // Fallback minimal insert
+          await supabase.from('appointments').insert([{
+            id: newApt.id,
+            booking_id: newApt.bookingId,
+            doctor_id: newApt.doctorId,
+            patient_id: newApt.patientId,
+            appointment_date: newApt.appointmentDate,
+            time_slot: newApt.timeSlot,
+            consultation_type: newApt.consultationType,
+            status: newApt.status,
+            reason: newApt.reason,
+            doctor_name: newApt.doctorName,
+            patient_name: newApt.patientName
+          }]);
+        }
       } catch (err) {
         console.warn('Supabase insert error:', err);
       }
     }
 
-    inMemoryAppointments = [newApt, ...inMemoryAppointments];
+    inMemoryAppointments = [newApt, ...inMemoryAppointments.filter(a => a.id !== newApt.id)];
     setLocalItem(STORAGE_KEY, JSON.stringify(inMemoryAppointments));
     notifyLocalListeners();
 
@@ -99,7 +196,7 @@ export const appointmentService = {
       await notificationService.notifyAppointmentEvent({
         userId: newApt.doctorId,
         title: 'New Appointment Request',
-        message: `New appointment request from ${newApt.patientName}`,
+        message: `New appointment request from ${newApt.patientName} (${newApt.bookingId})`,
         type: 'appointment',
         link: `/appointments/${newApt.id}`
       });
@@ -117,11 +214,11 @@ export const appointmentService = {
         await supabase
           .from('appointments')
           .update({ 
-            status, 
+            status: status.toLowerCase(), 
             notes: notes !== undefined ? notes : target?.notes,
             updated_at: new Date().toISOString() 
           })
-          .eq('id', target?.id || id);
+          .or(`id.eq.${target?.id || id},booking_id.eq.${target?.bookingId || id}`);
       } catch (err) {
         console.warn('Supabase status update error:', err);
       }

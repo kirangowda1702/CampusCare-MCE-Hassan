@@ -35,7 +35,7 @@ export const DemoLoginModal: React.FC<DemoLoginModalProps> = ({ isOpen, onClose 
     {
       role: 'doctor' as UserRole,
       title: 'Doctor Account',
-      name: 'Dr. Priya Rao (MD General Medicine)',
+      name: 'Dr. Kiran Gowda (DOC001 - General Medicine)',
       desc: 'Review patient appointments, start video consultations, write clinical notes, and generate prescriptions.',
       icon: Stethoscope,
       color: 'bg-emerald-500'

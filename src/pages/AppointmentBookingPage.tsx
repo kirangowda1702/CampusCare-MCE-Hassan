@@ -127,7 +127,7 @@ export const AppointmentBookingPage: React.FC = () => {
 
     try {
       const apt = await createAppointment({
-        doctorId: selectedDoctor.id,
+        doctorId: selectedDoctor.doctorId || selectedDoctor.id,
         doctorName: selectedDoctor.name,
         doctorSpecialization: selectedDoctor.specialization,
         doctorAvatar: selectedDoctor.avatarUrl,
@@ -146,7 +146,7 @@ export const AppointmentBookingPage: React.FC = () => {
         patientEmail: user?.email || 'rahul.sharma@mcehassan.ac.in',
         patientPhone: user?.phone || '+91 98765 43210',
         patientUSNorEmpId: user?.usn || user?.employeeId || '4MC21CS089',
-        status: 'confirmed'
+        status: 'pending'
       });
 
       setConfirmedAppointment(apt);
