@@ -421,3 +421,55 @@ export interface ChatMessage {
   timestamp: string;
   isDoctorNote?: boolean;
 }
+
+export type UrgencyLevel = 'LOW' | 'MODERATE' | 'URGENT' | 'EMERGENCY';
+
+export interface AuthoritativeSource {
+  title: string;
+  url: string;
+  organization: string;
+}
+
+export interface PossibleCondition {
+  name: string;
+  likelihood: 'Low' | 'Possible' | 'Moderate' | 'High';
+  explanation: string;
+}
+
+export interface MedicineInfo {
+  name: string;
+  general_use: string;
+  cautions: string;
+  side_effects: string;
+  interaction_warnings: string;
+  source: string;
+}
+
+export interface SymptomGuidanceRequest {
+  symptoms: string[];
+  freeText?: string;
+  severity: number; // 1 - 10
+  durationDays: number;
+  ageGroup: string;
+  medicalConditions?: string[];
+  currentMedications?: string;
+  allergies?: string;
+  pregnancyStatus?: string;
+}
+
+export interface SymptomGuidanceResponse {
+  summary: string;
+  possible_conditions: PossibleCondition[];
+  urgency: UrgencyLevel;
+  recommended_action: string;
+  recommended_specialty: string;
+  red_flags: string[];
+  self_care: string[];
+  medicine_information?: MedicineInfo[] | null;
+  emergency: boolean;
+  sources: AuthoritativeSource[];
+  disclaimer: string;
+  provider?: string;
+  isRealAI?: boolean;
+}
+
