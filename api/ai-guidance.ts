@@ -372,9 +372,16 @@ JSON Schema:
 }`;
 
     try {
-      const candidateModels = ['gemini-3.8-flash', 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+      const candidateModels = [
+        'gemini-2.0-flash',
+        'gemini-1.5-flash',
+        'gemini-1.5-pro',
+        'gemini-2.0-flash-lite-preview-02-05',
+        'gemini-3.8-flash'
+      ];
       let rawText = '';
-      let usedProvider = 'gemini-3.8-flash';
+      let usedProvider = '';
+      let lastGoogleError = '';
 
       for (const model of candidateModels) {
         try {
@@ -382,10 +389,12 @@ JSON Schema:
             `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
             {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: {
+                'Content-Type': 'application/json',
+                'x-goog-api-key': apiKey
+              },
               body: JSON.stringify({
-                contents: [{ parts: [{ text: systemPrompt }] }],
-                generationConfig: { responseMimeType: 'application/json' }
+                contents: [{ parts: [{ text: systemPrompt }] }]
               })
             }
           );
@@ -398,16 +407,20 @@ JSON Schema:
               break;
             }
           } else {
-            console.warn(`Gemini API model ${model} HTTP Error:`, geminiRes.status);
+            const errBody = await geminiRes.text().catch(() => '');
+            lastGoogleError = `Model ${model} returned HTTP ${geminiRes.status}: ${errBody.slice(0, 200).replace(apiKey, '[REDACTED]')}`;
+            console.warn(`Gemini API error for ${model}:`, lastGoogleError);
           }
         } catch (mErr: any) {
-          console.warn(`Gemini API model ${model} error:`, mErr?.message);
+          lastGoogleError = `Model ${model} fetch exception: ${mErr?.message}`;
+          console.warn(lastGoogleError);
         }
       }
 
       if (!rawText) {
         return res.status(503).json({
-          error: 'AI Health Guidance is currently unavailable. Please consult a doctor or contact Campus Health Centre.'
+          error: 'AI Health Guidance is currently unavailable. Please consult a doctor or contact Campus Health Centre.',
+          diagnostic: lastGoogleError ? lastGoogleError.replace(/[A-Za-z0-9_-]{20,}/g, '[REDACTED]') : undefined
         });
       }
 
