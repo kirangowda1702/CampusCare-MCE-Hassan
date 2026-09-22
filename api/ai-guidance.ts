@@ -373,15 +373,17 @@ JSON Schema:
 
     try {
       const candidateModels = [
+        'gemini-2.5-flash',
         'gemini-2.0-flash',
+        'gemini-2.0-flash-exp',
         'gemini-1.5-flash',
         'gemini-1.5-pro',
-        'gemini-2.0-flash-lite-preview-02-05',
+        'gemini-2.0-flash-lite',
         'gemini-3.8-flash'
       ];
       let rawText = '';
       let usedProvider = '';
-      let lastGoogleError = '';
+      const modelErrors: string[] = [];
 
       for (const model of candidateModels) {
         try {
@@ -390,8 +392,7 @@ JSON Schema:
             {
               method: 'POST',
               headers: {
-                'Content-Type': 'application/json',
-                'x-goog-api-key': apiKey
+                'Content-Type': 'application/json'
               },
               body: JSON.stringify({
                 contents: [{ parts: [{ text: systemPrompt }] }]
@@ -408,19 +409,18 @@ JSON Schema:
             }
           } else {
             const errBody = await geminiRes.text().catch(() => '');
-            lastGoogleError = `Model ${model} returned HTTP ${geminiRes.status}: ${errBody.slice(0, 200).replace(apiKey, '[REDACTED]')}`;
-            console.warn(`Gemini API error for ${model}:`, lastGoogleError);
+            const sanitizedErr = `${model} (HTTP ${geminiRes.status}): ${errBody.slice(0, 150).replace(apiKey, '[REDACTED]')}`;
+            modelErrors.push(sanitizedErr);
           }
         } catch (mErr: any) {
-          lastGoogleError = `Model ${model} fetch exception: ${mErr?.message}`;
-          console.warn(lastGoogleError);
+          modelErrors.push(`${model} (fetch err): ${mErr?.message}`);
         }
       }
 
       if (!rawText) {
         return res.status(503).json({
           error: 'AI Health Guidance is currently unavailable. Please consult a doctor or contact Campus Health Centre.',
-          diagnostic: lastGoogleError ? lastGoogleError.replace(/[A-Za-z0-9_-]{20,}/g, '[REDACTED]') : undefined
+          diagnostic: modelErrors.length > 0 ? modelErrors.join(' | ').replace(/[A-Za-z0-9_-]{25,}/g, '[REDACTED]') : undefined
         });
       }
 
