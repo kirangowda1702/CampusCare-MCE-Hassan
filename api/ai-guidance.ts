@@ -433,6 +433,7 @@ JSON Schema:
         }
       }
 
+      let listModelsDebug = '';
       if (!rawText) {
         // Dynamic discovery of available models for this specific API key
         try {
@@ -442,6 +443,8 @@ JSON Schema:
             const availableModels = (listData.models || [])
               .filter((m: any) => Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes('generateContent'))
               .map((m: any) => m.name.replace(/^models\//, ''));
+
+            listModelsDebug = `Found ${availableModels.length} models: ${availableModels.slice(0, 10).join(', ')}`;
 
             for (const dynamicModel of availableModels) {
               try {
@@ -461,17 +464,30 @@ JSON Schema:
                     usedProvider = dynamicModel;
                     break;
                   }
+                } else {
+                  const dErr = await dynRes.text().catch(() => '');
+                  modelErrors.push(`dynamic ${dynamicModel} (HTTP ${dynRes.status}): ${dErr.replace(/[\r\n]+/g, ' ').slice(0, 150).replace(apiKey, '[REDACTED]')}`);
                 }
-              } catch (dErr) {}
+              } catch (dErr: any) {
+                modelErrors.push(`dynamic ${dynamicModel} fetch err: ${dErr?.message}`);
+              }
             }
+          } else {
+            const lErr = await listRes.text().catch(() => '');
+            listModelsDebug = `ListModels HTTP ${listRes.status}: ${lErr.replace(/[\r\n]+/g, ' ').slice(0, 200).replace(apiKey, '[REDACTED]')}`;
           }
-        } catch (discErr) {}
+        } catch (discErr: any) {
+          listModelsDebug = `ListModels error: ${discErr?.message}`;
+        }
       }
 
       if (!rawText) {
         return res.status(503).json({
           error: 'AI Health Guidance is currently unavailable. Please consult a doctor or contact Campus Health Centre.',
-          diagnostic: modelErrors.length > 0 ? modelErrors.slice(-3).join(' | ').replace(/[A-Za-z0-9_-]{25,}/g, '[REDACTED]') : undefined
+          diagnostic: {
+            listModels: listModelsDebug,
+            modelErrors: modelErrors.map(e => e.replace(/[A-Za-z0-9_-]{25,}/g, '[REDACTED]'))
+          }
         });
       }
 
