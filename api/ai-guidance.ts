@@ -399,7 +399,10 @@ JSON Schema:
                   'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                  contents: [{ parts: [{ text: systemPrompt }] }]
+                  contents: [{ parts: [{ text: systemPrompt }] }],
+                  generationConfig: {
+                    responseMimeType: 'application/json'
+                  }
                 })
               }
             );
@@ -453,7 +456,10 @@ JSON Schema:
                   {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ contents: [{ parts: [{ text: systemPrompt }] }] })
+                    body: JSON.stringify({
+                      contents: [{ parts: [{ text: systemPrompt }] }],
+                      generationConfig: { responseMimeType: 'application/json' }
+                    })
                   }
                 );
 
@@ -491,12 +497,43 @@ JSON Schema:
         });
       }
 
+      let parsed: any = null;
       let cleanJson = rawText.trim();
       if (cleanJson.startsWith('```')) {
         cleanJson = cleanJson.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
       }
 
-      const parsed = JSON.parse(cleanJson);
+      try {
+        parsed = JSON.parse(cleanJson);
+      } catch (e1) {
+        const jsonMatch = cleanJson.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          try {
+            parsed = JSON.parse(jsonMatch[0]);
+          } catch (e2) {}
+        }
+      }
+
+      if (!parsed || typeof parsed !== 'object') {
+        parsed = {
+          symptom_summary: sanitize(rawText.slice(0, 250)),
+          possible_conditions: [
+            {
+              name: 'Symptom-Related Consideration',
+              likelihood: 'Possible',
+              explanation: 'Discuss clinical evaluation with a qualified doctor at Campus Health Centre.'
+            }
+          ],
+          urgency: clampedSeverity >= 7 ? 'URGENT' : clampedSeverity >= 4 ? 'MODERATE' : 'LOW',
+          red_flags: ['Persistent, worsening, or severe symptoms'],
+          recommended_action: 'Schedule a consultation with the campus physician or local hospital clinic.',
+          recommended_specialty: 'General Medicine',
+          common_otc_options: [
+            'Common OTC options that may be used for this symptom include supportive hydration and standard OTC analgesics under medical supervision.'
+          ],
+          medicine_precautions: ['Follow package directions and consult a healthcare professional before use.']
+        };
+      }
 
       // Strict validation of returned structure
       const urgency: 'LOW' | 'MODERATE' | 'URGENT' | 'EMERGENCY' = ['LOW', 'MODERATE', 'URGENT', 'EMERGENCY'].includes(parsed.urgency)
