@@ -377,7 +377,7 @@ JSON Schema:
 
     try {
       let rawText = '';
-      const primaryModel = 'gemini-3.8-flash';
+      const primaryModel = 'gemma-4-31b-it';
 
       try {
         const geminiRes = await fetch(
