@@ -528,7 +528,8 @@ JSON Schema:
     } catch (apiErr: any) {
       console.error('Gemini call failure:', apiErr);
       return res.status(503).json({
-        error: 'AI Health Guidance is currently unavailable. Please consult a doctor or contact Campus Health Centre.'
+        error: 'AI Health Guidance is currently unavailable. Please consult a doctor or contact Campus Health Centre.',
+        diagnostic: `Exception: ${apiErr?.message || String(apiErr)}`
       });
     }
 
