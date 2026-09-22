@@ -376,15 +376,34 @@ JSON Schema:
 }`;
 
     try {
-      const candidateModels = [
-        'gemini-3.8-flash',
-        'gemini-2.5-flash',
-        'gemini-2.0-flash'
-      ];
       let rawText = '';
       let usedProvider = '';
 
-      for (const model of candidateModels) {
+      // 1. Dynamic discovery of available models for this specific API key
+      let activeModels: string[] = ['gemini-3.8-flash', 'gemini-2.5-flash', 'gemini-2.0-flash'];
+      try {
+        const listRes = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`,
+          { signal: AbortSignal.timeout(3000) }
+        );
+        if (listRes.ok) {
+          const listData = await listRes.json();
+          const discovered = (listData.models || [])
+            .filter((m: any) => Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes('generateContent'))
+            .map((m: any) => m.name.replace(/^models\//, ''));
+
+          if (discovered.length > 0) {
+            activeModels = discovered.sort((a: string, b: string) => {
+              if (a.includes('gemini') && !b.includes('gemini')) return -1;
+              if (!a.includes('gemini') && b.includes('gemini')) return 1;
+              return 0;
+            });
+          }
+        }
+      } catch (listErr) {}
+
+      // 2. Query the best available model
+      for (const model of activeModels.slice(0, 3)) {
         try {
           const geminiRes = await fetch(
             `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
@@ -393,8 +412,7 @@ JSON Schema:
               headers: { 'Content-Type': 'application/json' },
               signal: AbortSignal.timeout(4500),
               body: JSON.stringify({
-                contents: [{ parts: [{ text: systemPrompt }] }],
-                generationConfig: { responseMimeType: 'application/json' }
+                contents: [{ parts: [{ text: systemPrompt }] }]
               })
             }
           );
@@ -408,48 +426,6 @@ JSON Schema:
             }
           }
         } catch (mErr: any) {}
-      }
-
-      if (!rawText) {
-        // Dynamic discovery of available models for this specific API key
-        try {
-          const listRes = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`,
-            { signal: AbortSignal.timeout(3000) }
-          );
-          if (listRes.ok) {
-            const listData = await listRes.json();
-            const availableModels = (listData.models || [])
-              .filter((m: any) => Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes('generateContent'))
-              .map((m: any) => m.name.replace(/^models\//, ''));
-
-            for (const dynamicModel of availableModels) {
-              if (candidateModels.includes(dynamicModel)) continue;
-              try {
-                const dynRes = await fetch(
-                  `https://generativelanguage.googleapis.com/v1beta/models/${dynamicModel}:generateContent?key=${apiKey}`,
-                  {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    signal: AbortSignal.timeout(4500),
-                    body: JSON.stringify({
-                      contents: [{ parts: [{ text: systemPrompt }] }]
-                    })
-                  }
-                );
-
-                if (dynRes.ok) {
-                  const dynData = await dynRes.json();
-                  rawText = dynData?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-                  if (rawText) {
-                    usedProvider = dynamicModel;
-                    break;
-                  }
-                }
-              } catch (dErr) {}
-            }
-          }
-        } catch (discErr) {}
       }
 
       if (!rawText) {
