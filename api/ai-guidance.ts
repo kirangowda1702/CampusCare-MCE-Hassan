@@ -373,54 +373,70 @@ JSON Schema:
 
     try {
       const candidateModels = [
+        'gemini-3.8-flash',
+        'gemini-3.8-pro',
+        'gemini-3.8-flash-exp',
         'gemini-2.5-flash',
-        'gemini-2.0-flash',
-        'gemini-2.0-flash-exp',
-        'gemini-1.5-flash',
-        'gemini-1.5-pro',
-        'gemini-2.0-flash-lite',
-        'gemini-3.8-flash'
+        'gemini-2.0-flash'
       ];
       let rawText = '';
       let usedProvider = '';
       const modelErrors: string[] = [];
 
       for (const model of candidateModels) {
-        try {
-          const geminiRes = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
-            {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify({
-                contents: [{ parts: [{ text: systemPrompt }] }]
-              })
+        // Attempt with retry if 503 high demand spike occurs
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            if (attempt > 0) {
+              await new Promise(r => setTimeout(r, 1000 * attempt));
             }
-          );
 
-          if (geminiRes.ok) {
-            const geminiData = await geminiRes.json();
-            rawText = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-            if (rawText) {
-              usedProvider = model;
-              break;
+            const geminiRes = await fetch(
+              `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+              {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                  contents: [{ parts: [{ text: systemPrompt }] }]
+                })
+              }
+            );
+
+            if (geminiRes.ok) {
+              const geminiData = await geminiRes.json();
+              rawText = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+              if (rawText) {
+                usedProvider = model;
+                break;
+              }
+            } else if (geminiRes.status === 503) {
+              // High demand spike - retry
+              const errBody = await geminiRes.text().catch(() => '');
+              modelErrors.push(`${model} [attempt ${attempt + 1}] (HTTP 503): ${errBody.slice(0, 100).replace(apiKey, '[REDACTED]')}`);
+              continue;
+            } else {
+              const errBody = await geminiRes.text().catch(() => '');
+              const sanitizedErr = `${model} (HTTP ${geminiRes.status}): ${errBody.slice(0, 120).replace(apiKey, '[REDACTED]')}`;
+              modelErrors.push(sanitizedErr);
+              break; // Do not retry on 404/400
             }
-          } else {
-            const errBody = await geminiRes.text().catch(() => '');
-            const sanitizedErr = `${model} (HTTP ${geminiRes.status}): ${errBody.slice(0, 150).replace(apiKey, '[REDACTED]')}`;
-            modelErrors.push(sanitizedErr);
+          } catch (mErr: any) {
+            modelErrors.push(`${model} (fetch err): ${mErr?.message}`);
+            break;
           }
-        } catch (mErr: any) {
-          modelErrors.push(`${model} (fetch err): ${mErr?.message}`);
+        }
+
+        if (rawText) {
+          break;
         }
       }
 
       if (!rawText) {
         return res.status(503).json({
           error: 'AI Health Guidance is currently unavailable. Please consult a doctor or contact Campus Health Centre.',
-          diagnostic: modelErrors.length > 0 ? modelErrors.join(' | ').replace(/[A-Za-z0-9_-]{25,}/g, '[REDACTED]') : undefined
+          diagnostic: modelErrors.length > 0 ? modelErrors.slice(-3).join(' | ').replace(/[A-Za-z0-9_-]{25,}/g, '[REDACTED]') : undefined
         });
       }
 
