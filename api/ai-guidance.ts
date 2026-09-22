@@ -385,7 +385,7 @@ JSON Schema:
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            signal: AbortSignal.timeout(6000),
+            signal: AbortSignal.timeout(8500),
             body: JSON.stringify({
               contents: [{ parts: [{ text: systemPrompt }] }]
             })
