@@ -372,31 +372,42 @@ JSON Schema:
 }`;
 
     try {
-      const geminiRes = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${apiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: systemPrompt }] }],
-            generationConfig: { responseMimeType: 'application/json' }
-          })
-        }
-      );
+      const candidateModels = ['gemini-3.8-flash', 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+      let rawText = '';
+      let usedProvider = 'gemini-3.8-flash';
 
-      if (!geminiRes.ok) {
-        console.warn('Gemini API HTTP Error:', geminiRes.status);
-        return res.status(503).json({
-          error: 'AI Health Guidance is currently unavailable. Please consult a doctor or contact Campus Health Centre.'
-        });
+      for (const model of candidateModels) {
+        try {
+          const geminiRes = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                contents: [{ parts: [{ text: systemPrompt }] }],
+                generationConfig: { responseMimeType: 'application/json' }
+              })
+            }
+          );
+
+          if (geminiRes.ok) {
+            const geminiData = await geminiRes.json();
+            rawText = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+            if (rawText) {
+              usedProvider = model;
+              break;
+            }
+          } else {
+            console.warn(`Gemini API model ${model} HTTP Error:`, geminiRes.status);
+          }
+        } catch (mErr: any) {
+          console.warn(`Gemini API model ${model} error:`, mErr?.message);
+        }
       }
 
-      const geminiData = await geminiRes.json();
-      const rawText = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text;
-
       if (!rawText) {
-        return res.status(502).json({
-          error: 'AI Health Guidance is currently unavailable. Invalid model response.'
+        return res.status(503).json({
+          error: 'AI Health Guidance is currently unavailable. Please consult a doctor or contact Campus Health Centre.'
         });
       }
 
@@ -431,7 +442,7 @@ JSON Schema:
         emergency: urgency === 'EMERGENCY',
         disclaimer: 'This tool provides general health guidance and does not replace diagnosis, treatment, or emergency care from a qualified healthcare professional.',
         isRealAI: true,
-        provider: 'gemini-3.8-flash'
+        provider: usedProvider
       });
 
     } catch (apiErr: any) {
