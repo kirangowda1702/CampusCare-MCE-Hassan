@@ -9,7 +9,7 @@ import { storageService } from '../services/storageService';
 
 export const MedicalRecordsPage: React.FC = () => {
   const { records, addMedicalRecord } = useMedical();
-  const { user } = useAuth();
+  const { user, role } = useAuth();
   const [filterType, setFilterType] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [isUploadOpen, setIsUploadOpen] = useState(false);
@@ -84,11 +84,23 @@ export const MedicalRecordsPage: React.FC = () => {
     }
   };
 
-  const filtered = records.filter(r => {
+  const isStudent = role === 'student' || (!role && user?.role === 'student');
+
+  // Strict patient privacy & isolation (Students see ONLY their own records)
+  const accessibleRecords = records.filter(r => {
+    if (isStudent && user) {
+      return r.patientId === user.id || (user.usn && r.patientId === user.usn);
+    }
+    // Doctors and Admins have authorized clinical / audit access
+    return true;
+  });
+
+  const filtered = accessibleRecords.filter(r => {
     if (filterType !== 'all' && r.recordType !== filterType) return false;
     if (searchTerm) {
       const match = r.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        r.doctorOrLabName.toLowerCase().includes(searchTerm.toLowerCase());
+        r.doctorOrLabName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (r.tags && r.tags.some(t => t.toLowerCase().includes(searchTerm.toLowerCase())));
       if (!match) return false;
     }
     return true;
@@ -146,22 +158,34 @@ export const MedicalRecordsPage: React.FC = () => {
       </div>
 
       {/* Grid of Medical Records */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {filtered.map(record => (
-          <MedicalRecordCard
-            key={record.id}
-            record={record}
-            onView={rec => setSelectedRecord(rec)}
-            onDownload={rec => {
-              if (rec.fileUrl && rec.fileUrl !== '#') {
-                window.open(rec.fileUrl, '_blank');
-              } else {
-                alert(`Opening secure download preview for: ${rec.title}`);
-              }
-            }}
-          />
-        ))}
-      </div>
+      {filtered.length > 0 ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {filtered.map(record => (
+            <MedicalRecordCard
+              key={record.id}
+              record={record}
+              onView={rec => setSelectedRecord(rec)}
+              onDownload={rec => {
+                if (rec.fileUrl && rec.fileUrl !== '#') {
+                  window.open(rec.fileUrl, '_blank');
+                } else {
+                  alert(`Opening secure download preview for: ${rec.title}`);
+                }
+              }}
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="p-12 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-center space-y-3">
+          <FolderLock className="w-12 h-12 text-slate-300 dark:text-slate-600 mx-auto" />
+          <h3 className="text-base font-bold text-slate-900 dark:text-white">No Medical Records Found</h3>
+          <p className="text-xs text-slate-500 max-w-md mx-auto">
+            {isStudent 
+              ? 'You do not have any medical records uploaded to your private E-Vault yet. Click "Upload Medical Record" to securely store your reports.'
+              : 'No medical records match your current filter or search criteria.'}
+          </p>
+        </div>
+      )}
 
       {/* Upload Modal */}
       <Modal isOpen={isUploadOpen} onClose={() => setIsUploadOpen(false)} title="Upload Medical Document to E-Vault">

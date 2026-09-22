@@ -314,14 +314,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const finalSources = matchedSources.slice(0, 3);
 
     // ==========================================
-    // 5. SECURE GEMINI API CALL
+    // 5. SECURE GEMINI API CALL (Server-side ONLY)
     // ==========================================
-    const apiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || '';
+    const apiKey = process.env.GEMINI_API_KEY || '';
 
     if (!apiKey || apiKey.length < 10) {
-      // If Gemini is not configured, do not fake an AI answer:
+      // If server-side Gemini key is not configured, safely return 503 without faking AI response
       return res.status(503).json({
-        error: 'AI Health Guidance is currently unavailable. Please consult a doctor or contact Campus Health Centre.'
+        error: 'AI Health Guidance backend service is not configured with a valid server GEMINI_API_KEY. Please consult a doctor or contact Campus Health Centre.'
       });
     }
 

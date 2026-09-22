@@ -9,13 +9,22 @@ import { Prescription } from '../types';
 
 export const PrescriptionsPage: React.FC = () => {
   const { prescriptions, createRemindersFromPrescription } = useMedical();
-  const { role } = useAuth();
+  const { role, user } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [isRxModalOpen, setIsRxModalOpen] = useState(false);
   const [printableRx, setPrintableRx] = useState<Prescription | null>(null);
 
   const isDoctor = role === 'doctor';
-  const filtered = prescriptions.filter(p => {
+  const isStudent = role === 'student' || (!role && user?.role === 'student');
+
+  const accessiblePrescriptions = prescriptions.filter(p => {
+    if (isStudent && user) {
+      return p.patientId === user.id || (user.usn && p.patientUSN === user.usn);
+    }
+    return true;
+  });
+
+  const filtered = accessiblePrescriptions.filter(p => {
     if (searchTerm) {
       return (
         p.prescriptionCode.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -60,19 +69,31 @@ export const PrescriptionsPage: React.FC = () => {
         />
       </div>
 
-      <div className="space-y-4">
-        {filtered.map(rx => (
-          <PrescriptionCard
-            key={rx.id}
-            prescription={rx}
-            onPrint={p => setPrintableRx(p)}
-            onAddToReminders={p => {
-              createRemindersFromPrescription(p);
-              alert('Medications from this prescription have been added to your daily Medicine Reminders!');
-            }}
-          />
-        ))}
-      </div>
+      {filtered.length > 0 ? (
+        <div className="space-y-4">
+          {filtered.map(rx => (
+            <PrescriptionCard
+              key={rx.id}
+              prescription={rx}
+              onPrint={p => setPrintableRx(p)}
+              onAddToReminders={p => {
+                createRemindersFromPrescription(p);
+                alert('Medications from this prescription have been added to your daily Medicine Reminders!');
+              }}
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="p-12 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-center space-y-3">
+          <Pill className="w-12 h-12 text-slate-300 dark:text-slate-600 mx-auto" />
+          <h3 className="text-base font-bold text-slate-900 dark:text-white">No Prescriptions Found</h3>
+          <p className="text-xs text-slate-500 max-w-md mx-auto">
+            {isStudent
+              ? 'You do not have any active clinical e-prescriptions on record. After a doctor consultation, certified prescriptions will appear here.'
+              : 'No prescriptions match your current search criteria.'}
+          </p>
+        </div>
+      )}
 
       {isDoctor && (
         <PrescriptionModal
