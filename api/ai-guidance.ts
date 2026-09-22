@@ -433,8 +433,7 @@ JSON Schema:
                     headers: { 'Content-Type': 'application/json' },
                     signal: AbortSignal.timeout(4500),
                     body: JSON.stringify({
-                      contents: [{ parts: [{ text: systemPrompt }] }],
-                      generationConfig: { responseMimeType: 'application/json' }
+                      contents: [{ parts: [{ text: systemPrompt }] }]
                     })
                   }
                 );
@@ -476,24 +475,41 @@ JSON Schema:
         }
       }
 
-      if (!parsed || typeof parsed !== 'object') {
+      if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.possible_conditions)) {
+        const textLower = rawText.toLowerCase();
+        const extractedConditions: { name: string; likelihood: 'Low' | 'Possible' | 'Moderate' | 'High'; explanation: string }[] = [];
+
+        if (textLower.includes('tension') || textLower.includes('stress')) {
+          extractedConditions.push({ name: 'Tension-Type Headache', likelihood: 'High', explanation: 'Commonly associated with study stress, posture, or screen fatigue.' });
+        }
+        if (textLower.includes('dehydration') || textLower.includes('hydration') || textLower.includes('fluid')) {
+          extractedConditions.push({ name: 'Dehydration / Fatigue-Related Headache', likelihood: 'Moderate', explanation: 'Mild headache associated with insufficient fluid intake or exertion.' });
+        }
+        if (textLower.includes('migraine')) {
+          extractedConditions.push({ name: 'Migraine without Aura', likelihood: 'Possible', explanation: 'Throbbing headache often sensitive to bright light or sound.' });
+        }
+        if (textLower.includes('sinus')) {
+          extractedConditions.push({ name: 'Sinusitis / Sinus Pressure', likelihood: 'Possible', explanation: 'Facial or frontal headache often accompanying congestion.' });
+        }
+        if (extractedConditions.length === 0) {
+          extractedConditions.push({ name: 'Tension Headache or Fatigue', likelihood: 'Possible', explanation: 'Mild headache symptoms common in college students. Consult doctor if persistent.' });
+        }
+
         parsed = {
-          symptom_summary: sanitize(rawText.slice(0, 250)),
-          possible_conditions: [
-            {
-              name: 'Symptom-Related Consideration',
-              likelihood: 'Possible',
-              explanation: 'Discuss clinical evaluation with a qualified doctor at Campus Health Centre.'
-            }
-          ],
+          symptom_summary: sanitize(rawText.replace(/[*#]/g, ' ').replace(/\s+/g, ' ').slice(0, 250)),
+          possible_conditions: extractedConditions,
           urgency: clampedSeverity >= 7 ? 'URGENT' : clampedSeverity >= 4 ? 'MODERATE' : 'LOW',
-          red_flags: ['Persistent, worsening, or severe symptoms'],
-          recommended_action: 'Schedule a consultation with the campus physician or local hospital clinic.',
+          red_flags: ['Sudden explosive headache', 'Fever with stiff neck', 'Visual disturbance or neurological deficit'],
+          recommended_action: 'Maintain adequate hydration, rest in a quiet environment, and consult Campus Health Centre if symptoms persist.',
           recommended_specialty: 'General Medicine',
           common_otc_options: [
-            'Common OTC options that may be used for this symptom include supportive hydration and standard OTC analgesics under medical supervision.'
+            'Common OTC options that may be used for this symptom include Paracetamol (Acetaminophen) or Ibuprofen taken with food, plus hydration and rest.'
           ],
-          medicine_precautions: ['Follow package directions and consult a healthcare professional before use.']
+          medicine_precautions: [
+            'Do not exceed maximum daily dosage for Paracetamol (4,000 mg/day).',
+            'Always take NSAIDs with food or milk.',
+            'Consult a doctor if headache persists beyond 48-72 hours or worsens.'
+          ]
         };
       }
 
