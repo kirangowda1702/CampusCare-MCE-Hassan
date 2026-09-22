@@ -194,7 +194,7 @@ export const SymptomTriage: React.FC = () => {
           <div>
             <span className="font-bold block text-slate-800 dark:text-slate-200">Clinical AI Engine:</span>
             <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
-              Google Gemini 1.5 Flash + MedlinePlus & WHO Sources
+              Google Gemini + MedlinePlus & WHO Sources
             </span>
           </div>
         </div>

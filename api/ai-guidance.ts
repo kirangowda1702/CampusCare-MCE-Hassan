@@ -373,7 +373,7 @@ JSON Schema:
 
     try {
       const geminiRes = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${apiKey}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -400,7 +400,12 @@ JSON Schema:
         });
       }
 
-      const parsed = JSON.parse(rawText);
+      let cleanJson = rawText.trim();
+      if (cleanJson.startsWith('```')) {
+        cleanJson = cleanJson.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+      }
+
+      const parsed = JSON.parse(cleanJson);
 
       // Strict validation of returned structure
       const urgency: 'LOW' | 'MODERATE' | 'URGENT' | 'EMERGENCY' = ['LOW', 'MODERATE', 'URGENT', 'EMERGENCY'].includes(parsed.urgency)
@@ -426,7 +431,7 @@ JSON Schema:
         emergency: urgency === 'EMERGENCY',
         disclaimer: 'This tool provides general health guidance and does not replace diagnosis, treatment, or emergency care from a qualified healthcare professional.',
         isRealAI: true,
-        provider: 'gemini-1.5-flash'
+        provider: 'gemini-3.8-flash'
       });
 
     } catch (apiErr: any) {
