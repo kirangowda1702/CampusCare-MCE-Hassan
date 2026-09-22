@@ -37,6 +37,7 @@ function mapDatabaseToModel(d: any): EmergencyRequest {
   return {
     id: d.id,
     userId: d.user_id,
+    userRole: d.user_role || d.userRole || 'Student',
     callerName: d.caller_name || 'Campus Member',
     callerPhone: d.caller_phone || '',
     locationDetails: d.location_details || 'MCE Hassan Campus',
@@ -99,11 +100,13 @@ export const emergencyService = {
     hasLocationPermission?: boolean;
     emergencyType: EmergencyRequest['emergencyType'];
     userId?: string;
+    userRole?: string;
   }): Promise<EmergencyRequest> {
     const now = new Date().toISOString();
     const newReq: EmergencyRequest = {
       id: 'emg-' + Date.now(),
       userId: req.userId,
+      userRole: req.userRole || 'Student',
       callerName: req.callerName,
       callerPhone: req.callerPhone,
       locationDetails: req.locationDetails,
@@ -125,6 +128,7 @@ export const emergencyService = {
         await supabase.from('emergency_requests').insert([{
           id: newReq.id,
           user_id: newReq.userId,
+          user_role: newReq.userRole,
           caller_name: newReq.callerName,
           caller_phone: newReq.callerPhone,
           location_details: newReq.locationDetails,

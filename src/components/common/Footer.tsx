@@ -31,7 +31,7 @@ export const Footer: React.FC = () => {
               <div className="flex items-center gap-2 text-amber-400 font-bold">
                 <ShieldAlert className="w-4 h-4" /> Campus Emergency Response (Prototype Alert)
               </div>
-              <div className="text-slate-300 font-mono font-semibold">Campus First Aid Desk • Dial 112 / 108 for Critical Care</div>
+              <div className="text-slate-300 font-mono font-semibold">Campus First Aid Desk • Call 9110885805 for Immediate First Aid</div>
             </div>
           </div>
 
@@ -83,7 +83,7 @@ export const Footer: React.FC = () => {
         <div className="pt-6 flex flex-col md:flex-row items-center justify-between gap-4 text-[11px] text-slate-500">
           <p className="text-center md:text-left max-w-2xl">
             <span className="font-bold text-slate-400">Academic Project Disclaimer: </span>
-            CampusCare is an engineering academic capstone prototype developed for Malnad College of Engineering (MCE Hassan). It is not an officially deployed municipal healthcare service. For life-threatening emergencies, dial national emergency <span className="text-rose-400 font-bold">112 / 108</span> or visit accredited hospital trauma centers immediately.
+            CampusCare is an engineering academic capstone prototype developed for Malnad College of Engineering (MCE Hassan). For campus emergencies, contact MCE First Aid at <span className="text-rose-400 font-bold">9110885805</span>.
           </p>
           <div className="flex items-center gap-4 text-slate-400">
             <span>© 2026 MCE Hassan (Academic Prototype)</span>

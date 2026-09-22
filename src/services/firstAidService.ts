@@ -11,77 +11,44 @@ export const defaultFirstAidCentre: FirstAidCentre = {
   location: 'Near Gymnasium & Silver Jubilee Complex, MCE Campus, Salagame Road',
   building: 'Silver Jubilee Complex',
   roomNumber: 'Room 101',
-  officialPhone: null, // Pending official verification
-  secondaryPhone: null,
-  operatingHours: '8:00 AM - 8:00 PM (Emergency First Aid On Call)',
-  afterHoursContact: null,
+  officialPhone: '9110885805',
+  secondaryPhone: '9110885805',
+  operatingHours: '24x7 Emergency First Aid On Call',
+  afterHoursContact: '9110885805',
   services: [
     'Emergency First Aid & Triage',
     'Minor Injury Wound Dressing',
     'Blood Pressure & Vitals Monitoring',
     'Initial Assessment & Stabilisation',
-    'Regional Hospital Referral Coordination'
+    'Emergency Response Coordination'
   ],
-  source: 'MCE Campus Facility Registry (Verification Pending)',
-  verified: false,
+  source: 'MCE Campus Health & Safety Protocol',
+  verified: true,
   isActive: true,
   createdAt: '2026-09-01T00:00:00Z',
-  updatedAt: '2026-09-18T00:00:00Z'
+  updatedAt: '2026-09-22T00:00:00Z'
 };
 
 export const defaultEmergencyContacts: EmergencyContact[] = [
   {
     id: 'ec-001',
-    name: 'MCE Campus First-Aid Centre',
+    name: 'MCE Campus First-Aid Responder Desk',
     category: 'Campus First Aid',
-    phone: '',
-    description: 'On-campus triage, basic wound care and immediate assistance (Pending verification).',
-    availableHours: '8:00 AM - 8:00 PM',
-    source: 'MCE Facility Registry (Pending)',
-    verified: false,
+    phone: '9110885805',
+    description: 'On-campus triage, immediate medical stabilization, and duty responder dispatch.',
+    availableHours: '24 Hours Emergency On Call',
+    source: 'MCE First-Aid Protocol',
+    verified: true,
     isActive: true
   },
   {
     id: 'ec-002',
-    name: 'MCE Campus Security Main Gate',
+    name: 'MCE Campus Emergency Safety Coordinator',
     category: 'Campus Security',
-    phone: '',
-    description: 'Main gate campus security dispatch and gate clearance for emergency vehicles.',
+    phone: '9110885805',
+    description: 'Campus emergency dispatch and immediate gate clearance for first aid assistance.',
     availableHours: '24 Hours',
-    source: 'Campus Security Registry (Pending)',
-    verified: false,
-    isActive: true
-  },
-  {
-    id: 'ec-003',
-    name: 'National Emergency Helpline',
-    category: 'External Emergency Service',
-    phone: '112',
-    description: 'All-in-one national emergency response helpline (Police, Fire, Ambulance).',
-    availableHours: '24 Hours',
-    source: 'Government of India Emergency Services',
-    verified: true,
-    isActive: true
-  },
-  {
-    id: 'ec-004',
-    name: 'Karnataka State Ambulance Service',
-    category: 'External Emergency Service',
-    phone: '108',
-    description: 'Government 24x7 emergency medical response and trauma transport in Karnataka.',
-    availableHours: '24 Hours',
-    source: 'Govt. of Karnataka Health Dept',
-    verified: true,
-    isActive: true
-  },
-  {
-    id: 'ec-005',
-    name: 'HIMS Hassan Govt Teaching Hospital',
-    category: 'Hospital',
-    phone: '+91 8172 231500',
-    description: 'Level-1 Regional Government Teaching Hospital & Trauma Center (2.3 km).',
-    availableHours: '24 Hours Emergency Casualty',
-    source: 'Official HIMS Govt Portal',
+    source: 'MCE Emergency Registry',
     verified: true,
     isActive: true
   }

@@ -66,7 +66,7 @@ export const HomePage: React.FC = () => {
           <div className="flex items-center gap-2">
             <Info className="w-4 h-4 text-amber-600 flex-shrink-0" />
             <span>
-              <strong>Academic Project Notice:</strong> CampusCare is an engineering project prototype developed for Malnad College of Engineering (MCE Hassan). All medical profiles and clinical schedules shown in demo mode represent prototype data. In a real-life emergency, dial national emergency <strong>112 / 108</strong>.
+              <strong>Academic Project Notice:</strong> CampusCare is an engineering project prototype developed for Malnad College of Engineering (MCE Hassan). All medical profiles and clinical schedules shown in demo mode represent prototype data. For campus medical emergencies, contact MCE First Aid at <strong>9110885805</strong>.
             </span>
           </div>
           <span className="text-[11px] font-mono font-bold px-2 py-0.5 rounded bg-amber-200/70 dark:bg-amber-900 text-amber-950 dark:text-amber-100 hidden md:inline-block">

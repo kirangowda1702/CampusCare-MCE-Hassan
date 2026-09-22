@@ -22,9 +22,11 @@ import {
   Activity,
   ArrowRight,
   Send,
-  AlertTriangle
+  AlertTriangle,
+  Volume2,
+  VolumeX
 } from 'lucide-react';
-import { EmergencyCampusStatus, HospitalReferral } from '../types';
+import { EmergencyCampusStatus, HospitalReferral, EmergencyRequest } from '../types';
 
 export const EmergencyPage: React.FC = () => {
   const {
@@ -39,6 +41,92 @@ export const EmergencyPage: React.FC = () => {
 
   const { role, user } = useAuth();
   const isResponderOrAdmin = role === 'admin' || role === 'doctor' || role === 'faculty';
+
+  // Web Audio Emergency Sound Engine
+  const [isAlertMuted, setIsAlertMuted] = useState(false);
+  const [audioUnlocked, setAudioUnlocked] = useState(false);
+  const [locationAlertMessage, setLocationAlertMessage] = useState<string | null>(null);
+  const audioCtxRef = React.useRef<AudioContext | null>(null);
+  const alarmIntervalRef = React.useRef<any>(null);
+
+  const initOrUnlockAudio = () => {
+    try {
+      if (!audioCtxRef.current) {
+        const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+        if (AudioContextClass) {
+          audioCtxRef.current = new AudioContextClass();
+        }
+      }
+      if (audioCtxRef.current && audioCtxRef.current.state === 'suspended') {
+        audioCtxRef.current.resume();
+      }
+      setAudioUnlocked(true);
+    } catch (e) {
+      console.warn('Audio unlock error:', e);
+    }
+  };
+
+  const playAlarmTone = () => {
+    try {
+      if (!audioCtxRef.current) {
+        const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+        if (AudioContextClass) {
+          audioCtxRef.current = new AudioContextClass();
+        }
+      }
+      const ctx = audioCtxRef.current;
+      if (!ctx || ctx.state === 'suspended') return;
+
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(880, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(587, ctx.currentTime + 0.25);
+
+      gain.gain.setValueAtTime(0.15, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start();
+      osc.stop(ctx.currentTime + 0.3);
+    } catch (e) {
+      console.warn('Play alarm error:', e);
+    }
+  };
+
+  useEffect(() => {
+    const isPendingAlert = activeEmergency && (activeEmergency.status === 'REQUESTED' || activeEmergency.status === 'active');
+
+    if (isPendingAlert && !isAlertMuted && isResponderOrAdmin) {
+      playAlarmTone();
+      alarmIntervalRef.current = setInterval(() => {
+        playAlarmTone();
+      }, 900);
+    } else {
+      if (alarmIntervalRef.current) {
+        clearInterval(alarmIntervalRef.current);
+        alarmIntervalRef.current = null;
+      }
+    }
+
+    return () => {
+      if (alarmIntervalRef.current) {
+        clearInterval(alarmIntervalRef.current);
+        alarmIntervalRef.current = null;
+      }
+    };
+  }, [activeEmergency?.id, activeEmergency?.status, isAlertMuted, isResponderOrAdmin]);
+
+  const handleOpenLocation = (emg: EmergencyRequest) => {
+    if (emg.latitude && emg.longitude) {
+      window.open(`https://www.google.com/maps/search/?api=1&query=${emg.latitude},${emg.longitude}`, '_blank');
+    } else {
+      setLocationAlertMessage('Location unavailable. Please contact MCE First Aid and provide your current location.');
+      setTimeout(() => setLocationAlertMessage(null), 6000);
+    }
+  };
 
   // Referral Modal State
   const [isReferralModalOpen, setIsReferralModalOpen] = useState(false);
@@ -117,7 +205,7 @@ export const EmergencyPage: React.FC = () => {
           Campus Emergency Response & First-Aid Centre
         </h1>
         <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-          Malnad College of Engineering (MCE), Hassan — First-Aid Triage & Regional Trauma Escalation
+          Malnad College of Engineering (MCE), Hassan — First-Aid Triage & Campus Emergency Network
         </p>
       </div>
 
@@ -125,9 +213,9 @@ export const EmergencyPage: React.FC = () => {
       <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/60 text-xs text-amber-900 dark:text-amber-200 flex items-start gap-3">
         <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
         <div className="space-y-1">
-          <strong className="font-bold">Campus Response vs External Emergency Services:</strong>
+          <strong className="font-bold">Campus Emergency Protocol:</strong>
           <p className="text-[11px] leading-relaxed text-amber-800 dark:text-amber-300">
-            CampusCare coordinates on-campus first-aid assistance with MCE health staff and campus security. CampusCare does <strong>NOT</strong> independently dispatch an ambulance. For critical medical collapse, acute trauma, or road accidents in Hassan, immediately dial national emergency <strong>108</strong> (Govt Ambulance) or <strong>112</strong>.
+            CampusCare coordinates on-campus first-aid triage with MCE health staff and campus security. For campus first-aid emergencies, contact the MCE First Aid Desk immediately at <strong>9110885805</strong>.
           </p>
         </div>
       </div>
@@ -260,90 +348,213 @@ export const EmergencyPage: React.FC = () => {
       )}
 
       {/* ======================================================== */}
-      {/* 2. FIRST-AID RESPONDER ACTION CONSOLE (Admin/Doctor/Staff) */}
+      {/* 2. FIRST-AID RESPONDER ALERT & DISPATCH CONSOLE (Admin/Doctor/Faculty) */}
       {/* ======================================================== */}
       {isResponderOrAdmin && (
-        <div className="p-6 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
-              <UserCheck className="w-5 h-5 text-primary-600" />
-              First-Aid Responder & Emergency Dispatch Control
-            </h3>
-            <span className="px-2.5 py-0.5 rounded-full bg-primary-100 dark:bg-primary-950 text-primary-700 dark:text-primary-300 text-[10px] font-bold">
-              {role.toUpperCase()} ACCESS
-            </span>
-          </div>
-          <p className="text-xs text-slate-500 dark:text-slate-400">
-            Real-time interface for authorized on-duty campus medical officers, security chiefs, and first-aid staff.
-          </p>
-
-          {activeEmergency ? (
-            <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-3">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <div>
-                  <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
-                    Active Incident #{activeEmergency.id.slice(-6)} ({activeEmergency.emergencyType})
-                  </span>
-                  <div className="text-[11px] text-slate-500">
-                    Caller: {activeEmergency.callerName} ({activeEmergency.callerPhone}) • Location: {activeEmergency.locationDetails}
+        <div className="space-y-4">
+          {activeEmergency && (
+            <div className="p-6 rounded-3xl bg-rose-600 text-white shadow-2xl border-4 border-rose-400 space-y-5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-rose-500/50 pb-4">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-2xl">🚨</span>
+                    <h2 className="text-xl sm:text-2xl font-black uppercase tracking-wide">
+                      CAMPUS EMERGENCY ALERT
+                    </h2>
                   </div>
+                  <p className="text-xs font-semibold text-rose-100">
+                    New emergency request received.
+                  </p>
                 </div>
-                <div className="text-xs font-bold text-rose-600">
-                  Current Status: {activeEmergency.status}
+
+                {/* Sound & Autoplay Controls */}
+                <div className="flex items-center gap-2">
+                  {!audioUnlocked && (
+                    <button
+                      onClick={initOrUnlockAudio}
+                      className="px-3 py-1.5 rounded-xl bg-white text-rose-700 hover:bg-rose-50 text-xs font-bold shadow transition-all flex items-center gap-1.5"
+                    >
+                      <Volume2 className="w-3.5 h-3.5" /> Enable Emergency Alerts
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setIsAlertMuted(!isAlertMuted)}
+                    className="px-3 py-1.5 rounded-xl bg-rose-800/80 hover:bg-rose-900 text-white text-xs font-bold transition-all flex items-center gap-1.5"
+                  >
+                    {isAlertMuted ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
+                    {isAlertMuted ? 'Unmute Alert' : 'Mute Alert'}
+                  </button>
                 </div>
               </div>
 
-              {/* Responder Action Buttons */}
-              <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-200 dark:border-slate-700">
-                <button
-                  onClick={() => updateWorkflowStatus(activeEmergency.id, 'ACKNOWLEDGED')}
-                  disabled={activeEmergency.status !== 'REQUESTED'}
-                  className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 disabled:opacity-40 text-white text-xs font-bold shadow transition-all"
-                >
-                  1. Acknowledge
-                </button>
+              {/* Alert Information Table / Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 p-4 rounded-2xl bg-rose-700/60 backdrop-blur-sm border border-rose-400/40 text-xs">
+                <div>
+                  <span className="text-rose-200 block text-[11px] font-medium">Incident ID</span>
+                  <strong className="text-white font-mono text-sm">{activeEmergency.id}</strong>
+                </div>
 
+                <div>
+                  <span className="text-rose-200 block text-[11px] font-medium">User role</span>
+                  <strong className="text-white font-bold text-sm uppercase">
+                    {activeEmergency.userRole || 'Student'}
+                  </strong>
+                </div>
+
+                <div>
+                  <span className="text-rose-200 block text-[11px] font-medium">Time</span>
+                  <strong className="text-white font-mono text-sm">
+                    {new Date(activeEmergency.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                  </strong>
+                </div>
+
+                <div className="lg:col-span-2">
+                  <span className="text-rose-200 block text-[11px] font-medium">Location (authorized responder only)</span>
+                  <strong className="text-white text-xs block">
+                    {activeEmergency.locationDetails}
+                  </strong>
+                  {activeEmergency.latitude && activeEmergency.longitude ? (
+                    <span className="text-emerald-200 font-mono text-[10px] block mt-0.5">
+                      📍 GPS Fixed: {activeEmergency.latitude.toFixed(4)}°, {activeEmergency.longitude.toFixed(4)}°
+                    </span>
+                  ) : (
+                    <span className="text-rose-200/80 text-[10px] italic block mt-0.5">
+                      Location coordinates unavailable.
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 text-xs">
+                <span className="text-rose-200 font-semibold">Status:</span>
+                <span className="px-2.5 py-0.5 rounded-full bg-white text-rose-700 font-bold uppercase text-[11px]">
+                  {activeEmergency.status}
+                </span>
+              </div>
+
+              {locationAlertMessage && (
+                <div className="p-3 rounded-xl bg-amber-500 text-slate-950 font-bold text-xs flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                  <span>{locationAlertMessage}</span>
+                </div>
+              )}
+
+              {/* Primary Action Buttons Required */}
+              <div className="flex flex-wrap items-center gap-3 pt-1 border-t border-rose-500/40">
                 <button
                   onClick={() => {
-                    setSelectedEmergencyId(activeEmergency.id);
-                    setIsAssignModalOpen(true);
+                    updateWorkflowStatus(activeEmergency.id, 'ACKNOWLEDGED');
+                    setIsAlertMuted(true);
                   }}
-                  disabled={['RESOLVED', 'CANCELLED'].includes(activeEmergency.status)}
-                  className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-xs font-bold shadow transition-all"
+                  disabled={activeEmergency.status !== 'REQUESTED' && activeEmergency.status !== 'active'}
+                  className="flex-1 sm:flex-initial px-5 py-2.5 rounded-xl bg-white text-rose-800 hover:bg-rose-50 disabled:opacity-40 font-black text-xs shadow-lg transition-all flex items-center justify-center gap-2 uppercase tracking-wider"
                 >
-                  2. Assign Responder
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                  [ACKNOWLEDGE]
                 </button>
 
-                <button
-                  onClick={() => updateWorkflowStatus(activeEmergency.id, 'ASSISTANCE_IN_PROGRESS')}
-                  disabled={['ASSISTANCE_IN_PROGRESS', 'REFERRED', 'RESOLVED', 'CANCELLED'].includes(activeEmergency.status)}
-                  className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 text-white text-xs font-bold shadow transition-all"
+                <a
+                  href="tel:9110885805"
+                  className="flex-1 sm:flex-initial px-5 py-2.5 rounded-xl bg-rose-900 hover:bg-black text-white font-black text-xs shadow-lg transition-all flex items-center justify-center gap-2 uppercase tracking-wider"
                 >
-                  3. Start Assistance
-                </button>
+                  <Phone className="w-4 h-4" />
+                  [CALL MCE FIRST AID]
+                </a>
 
                 <button
-                  onClick={() => handleOpenReferral(activeEmergency.id)}
-                  disabled={['RESOLVED', 'CANCELLED'].includes(activeEmergency.status)}
-                  className="px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 disabled:opacity-40 text-white text-xs font-bold shadow transition-all"
+                  onClick={() => handleOpenLocation(activeEmergency)}
+                  className="flex-1 sm:flex-initial px-5 py-2.5 rounded-xl bg-rose-800 hover:bg-rose-900 text-white font-black text-xs shadow-lg transition-all flex items-center justify-center gap-2 uppercase tracking-wider"
                 >
-                  4. Refer to Hospital
-                </button>
-
-                <button
-                  onClick={() => updateWorkflowStatus(activeEmergency.id, 'RESOLVED')}
-                  disabled={['RESOLVED', 'CANCELLED'].includes(activeEmergency.status)}
-                  className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white text-xs font-bold shadow transition-all"
-                >
-                  5. Resolve Incident
+                  <MapPin className="w-4 h-4 text-amber-300" />
+                  [OPEN LOCATION]
                 </button>
               </div>
             </div>
-          ) : (
-            <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-800 text-center text-xs text-slate-500">
-              ✅ No active emergencies in queue. All recent incidents resolved.
-            </div>
           )}
+
+          {/* Full Dispatch Workflow Controls Card */}
+          <div className="p-6 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <UserCheck className="w-5 h-5 text-primary-600" />
+                First-Aid Responder & Emergency Dispatch Control
+              </h3>
+              <span className="px-2.5 py-0.5 rounded-full bg-primary-100 dark:bg-primary-950 text-primary-700 dark:text-primary-300 text-[10px] font-bold">
+                {role.toUpperCase()} ACCESS
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Real-time dispatch controls for authorized on-duty campus medical officers, security chiefs, and first-aid staff.
+            </p>
+
+            {activeEmergency ? (
+              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                      Incident #{activeEmergency.id.slice(-6)} ({activeEmergency.emergencyType})
+                    </span>
+                    <div className="text-[11px] text-slate-500">
+                      Caller: {activeEmergency.callerName} ({activeEmergency.callerPhone}) • Location: {activeEmergency.locationDetails}
+                    </div>
+                  </div>
+                  <div className="text-xs font-bold text-rose-600">
+                    Status: {activeEmergency.status}
+                  </div>
+                </div>
+
+                {/* Dispatch Lifecycle Buttons */}
+                <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-200 dark:border-slate-700">
+                  <button
+                    onClick={() => updateWorkflowStatus(activeEmergency.id, 'ACKNOWLEDGED')}
+                    disabled={activeEmergency.status !== 'REQUESTED' && activeEmergency.status !== 'active'}
+                    className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 disabled:opacity-40 text-white text-xs font-bold shadow transition-all"
+                  >
+                    1. Acknowledge
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setSelectedEmergencyId(activeEmergency.id);
+                      setIsAssignModalOpen(true);
+                    }}
+                    disabled={['RESOLVED', 'CANCELLED', 'resolved', 'cancelled'].includes(activeEmergency.status)}
+                    className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-xs font-bold shadow transition-all"
+                  >
+                    2. Assign Responder
+                  </button>
+
+                  <button
+                    onClick={() => updateWorkflowStatus(activeEmergency.id, 'ASSISTANCE_IN_PROGRESS')}
+                    disabled={['ASSISTANCE_IN_PROGRESS', 'REFERRED', 'RESOLVED', 'CANCELLED', 'resolved', 'cancelled'].includes(activeEmergency.status)}
+                    className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 text-white text-xs font-bold shadow transition-all"
+                  >
+                    3. Start Assistance
+                  </button>
+
+                  <button
+                    onClick={() => handleOpenReferral(activeEmergency.id)}
+                    disabled={['RESOLVED', 'CANCELLED', 'resolved', 'cancelled'].includes(activeEmergency.status)}
+                    className="px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 disabled:opacity-40 text-white text-xs font-bold shadow transition-all"
+                  >
+                    4. Refer to Hospital
+                  </button>
+
+                  <button
+                    onClick={() => updateWorkflowStatus(activeEmergency.id, 'RESOLVED')}
+                    disabled={['RESOLVED', 'CANCELLED', 'resolved', 'cancelled'].includes(activeEmergency.status)}
+                    className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white text-xs font-bold shadow transition-all"
+                  >
+                    5. Resolve Incident
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-800 text-center text-xs text-slate-500">
+                ✅ No active emergencies in queue. All recent incidents resolved.
+              </div>
+            )}
+          </div>
         </div>
       )}
 

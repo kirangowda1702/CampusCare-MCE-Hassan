@@ -545,20 +545,14 @@ export const SymptomTriage: React.FC = () => {
                     <span>These symptoms may require urgent medical attention.</span>
                   </div>
                   <p className="text-xs text-rose-800 dark:text-rose-300 leading-relaxed">
-                    Life-threatening symptoms or acute red flags have been detected. Please contact national emergency services or proceed immediately to the HIMS Hassan Emergency Trauma Unit.
+                    Life-threatening symptoms or acute red flags have been detected. Please contact MCE First Aid immediately.
                   </p>
                   <div className="flex flex-wrap items-center gap-2 pt-1">
                     <a
-                      href="tel:112"
+                      href="tel:9110885805"
                       className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-md"
                     >
-                      <PhoneCall className="w-3.5 h-3.5" /> Call 112 (National Emergency)
-                    </a>
-                    <a
-                      href="tel:108"
-                      className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-md"
-                    >
-                      <PhoneCall className="w-3.5 h-3.5" /> Call 108 (Ambulance)
+                      <PhoneCall className="w-3.5 h-3.5" /> Call MCE First Aid (9110885805)
                     </a>
                     <button
                       onClick={() => setIsEmergencyModalOpen(true)}

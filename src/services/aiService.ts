@@ -59,10 +59,10 @@ export const aiService = {
         urgency: 'EMERGENCY',
         red_flags: [
           detectedRedFlagReason || 'Acute severe pain, neurological deficit, or respiratory distress',
-          'Do not drive or transport alone; call for immediate companion or ambulance assistance',
-          'Emergency contact: HIMS Hassan (+91 8172 231500) or National Emergency (112 / 108)'
+          'Do not drive or transport alone; call for immediate companion or campus assistance',
+          'Emergency contact: MCE First Aid (+91 9110885805)'
         ],
-        recommended_action: 'These symptoms may require urgent medical attention. Dial 112 or 108 immediately, or proceed to the HIMS Hassan Emergency Trauma Unit without delay.',
+        recommended_action: 'These symptoms may require urgent medical attention. Contact MCE First Aid immediately at 9110885805 or trigger Campus Emergency SOS.',
         recommended_specialty: 'Emergency Medicine / Casualty (HIMS Hassan)',
         common_otc_options: [
           'Do NOT take oral medications or self-prescribe OTC drugs during an acute emergency before professional clinical evaluation.'

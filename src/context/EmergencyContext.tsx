@@ -14,7 +14,9 @@ interface EmergencyContextType {
     type: EmergencyRequest['emergencyType'],
     coords?: { lat: number; lng: number } | null,
     description?: string,
-    callerName?: string
+    callerName?: string,
+    userRole?: string,
+    userId?: string
   ) => EmergencyRequest;
   updateWorkflowStatus: (
     id: string,
@@ -104,13 +106,17 @@ export const EmergencyProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     type: EmergencyRequest['emergencyType'],
     coords?: { lat: number; lng: number } | null,
     description?: string,
-    callerName?: string
+    callerName?: string,
+    userRole?: string,
+    userId?: string
   ): EmergencyRequest => {
     const now = new Date().toISOString();
     const req: EmergencyRequest = {
       id: 'emg-' + Date.now(),
+      userId: userId,
+      userRole: userRole || 'Student',
       callerName: callerName || 'Campus Member (SOS Alert)',
-      callerPhone: phone || '+91 8172 240501',
+      callerPhone: phone || '9110885805',
       locationDetails: location || 'MCE Hassan Campus',
       description: description || 'Immediate campus first-aid assistance requested.',
       latitude: coords ? coords.lat : null,
@@ -129,6 +135,8 @@ export const EmergencyProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     setEmergencyHistory(prev => [req, ...prev]);
 
     emergencyService.createEmergency({
+      userId: req.userId,
+      userRole: req.userRole,
       callerName: req.callerName,
       callerPhone: req.callerPhone,
       locationDetails: req.locationDetails,

@@ -253,6 +253,7 @@ export type EmergencyCampusStatus =
 export interface EmergencyRequest {
   id: string;
   userId?: string;
+  userRole?: string;
   callerName: string;
   callerPhone: string;
   locationDetails: string;

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Modal } from '../../components/common/Modal';
 import { useEmergency } from '../../context/EmergencyContext';
+import { useAuth } from '../../context/AuthContext';
 import { ShieldAlert, Phone, MapPin, CheckCircle2, LocateFixed, AlertTriangle, Building2 } from 'lucide-react';
 
 export const EmergencyModal: React.FC = () => {
@@ -12,9 +13,11 @@ export const EmergencyModal: React.FC = () => {
     firstAidCentre
   } = useEmergency();
 
+  const { user, role } = useAuth();
+
   const [countdown, setCountdown] = useState<number | null>(null);
   const [location, setLocation] = useState('MCE Hassan Main Campus (Silver Jubilee Block)');
-  const [phone, setPhone] = useState('+91 98765 43210');
+  const [phone, setPhone] = useState(user?.phone || '9110885805');
   const [description, setDescription] = useState('Immediate first aid assistance required on campus.');
   const [emergencyType, setEmergencyType] = useState<any>('Accident/Trauma');
   const [gpsCoords, setGpsCoords] = useState<{ lat: number; lng: number } | null>(null);
@@ -57,12 +60,14 @@ export const EmergencyModal: React.FC = () => {
     if (countdown !== null && countdown > 0) {
       timer = setTimeout(() => setCountdown(countdown - 1), 1000);
     } else if (countdown === 0) {
-      triggerEmergency(location, phone, emergencyType, gpsCoords, description);
+      const callerName = user?.fullName || 'Campus Member';
+      const userRole = (role || 'Student').toUpperCase();
+      triggerEmergency(location, phone, emergencyType, gpsCoords, description, callerName, userRole, user?.id);
       setIsTriggered(true);
       setCountdown(null);
     }
     return () => clearTimeout(timer);
-  }, [countdown, location, phone, emergencyType, gpsCoords, description, triggerEmergency]);
+  }, [countdown, location, phone, emergencyType, gpsCoords, description, triggerEmergency, user, role]);
 
   const handleStartCountdown = () => setCountdown(5);
   const handleCancelCountdown = () => setCountdown(null);
@@ -100,18 +105,20 @@ export const EmergencyModal: React.FC = () => {
               <div className="text-[11px] text-slate-500 font-mono">
                 {activeEmergency?.latitude && activeEmergency?.longitude
                   ? `GPS Fixed: ${activeEmergency.latitude.toFixed(4)}°, ${activeEmergency.longitude.toFixed(4)}°`
-                  : 'Precise location was not shared.'}
+                  : 'Location unavailable. Please contact MCE First Aid and provide your current location.'}
               </div>
               <div className="text-[11px] text-primary-600 font-semibold">
                 Status: {activeEmergency?.status || 'REQUESTED'}
               </div>
             </div>
 
-            <div className="text-[11px] text-amber-800 dark:text-amber-300 bg-amber-100/70 dark:bg-amber-950/70 p-3 rounded-xl border border-amber-300 dark:border-amber-800 text-left space-y-1">
-              <strong>External Emergency Guidance:</strong>
-              <p>
-                CampusCare coordinates internal first aid assistance. CampusCare does NOT independently dispatch an ambulance. For critical medical collapse, dial <strong>108</strong> (Govt Ambulance) or <strong>112</strong> immediately.
-              </p>
+            <div className="pt-2">
+              <a
+                href="tel:9110885805"
+                className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-md transition-all"
+              >
+                <Phone className="w-4 h-4" /> Call MCE First Aid (9110885805)
+              </a>
             </div>
           </div>
         ) : countdown !== null ? (
@@ -212,34 +219,12 @@ export const EmergencyModal: React.FC = () => {
             </div>
 
             <div className="pt-3 border-t border-slate-100 dark:border-slate-800">
-              <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-2">
-                Or Call Emergency Services Directly:
-              </p>
-              <div className="grid grid-cols-2 gap-2">
-                {firstAidCentre.verified && firstAidCentre.officialPhone ? (
-                  <a
-                    href={`tel:${firstAidCentre.officialPhone}`}
-                    className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-[11px] font-bold text-slate-800 dark:text-slate-200"
-                  >
-                    <Building2 className="w-3.5 h-3.5 text-primary-500" /> First-Aid Room
-                  </a>
-                ) : (
-                  <button
-                    disabled
-                    className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg bg-slate-100 dark:bg-slate-800 text-[11px] font-bold text-slate-400 cursor-not-allowed"
-                    title="Official First-Aid contact is not yet configured."
-                  >
-                    <Building2 className="w-3.5 h-3.5 opacity-50" /> First-Aid (Pending)
-                  </button>
-                )}
-
-                <a
-                  href="tel:108"
-                  className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-[11px] font-bold text-slate-800 dark:text-slate-200"
-                >
-                  <Phone className="w-3.5 h-3.5 text-rose-500" /> Dial 108 (External ER)
-                </a>
-              </div>
+              <a
+                href="tel:9110885805"
+                className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-bold text-slate-900 dark:text-white transition-all shadow-sm"
+              >
+                <Phone className="w-4 h-4 text-rose-500" /> Call MCE First Aid (9110885805)
+              </a>
             </div>
           </>
         )}
