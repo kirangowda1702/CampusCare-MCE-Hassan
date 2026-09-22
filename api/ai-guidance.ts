@@ -418,9 +418,9 @@ JSON Schema:
               continue;
             } else {
               const errBody = await geminiRes.text().catch(() => '');
-              const sanitizedErr = `${model} (HTTP ${geminiRes.status}): ${errBody.slice(0, 120).replace(apiKey, '[REDACTED]')}`;
+              const sanitizedErr = `${model} (HTTP ${geminiRes.status}): ${errBody.replace(/[\r\n]+/g, ' ').slice(0, 300).replace(apiKey, '[REDACTED]')}`;
               modelErrors.push(sanitizedErr);
-              break; // Do not retry on 404/400
+              break;
             }
           } catch (mErr: any) {
             modelErrors.push(`${model} (fetch err): ${mErr?.message}`);
@@ -431,6 +431,41 @@ JSON Schema:
         if (rawText) {
           break;
         }
+      }
+
+      if (!rawText) {
+        // Dynamic discovery of available models for this specific API key
+        try {
+          const listRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
+          if (listRes.ok) {
+            const listData = await listRes.json();
+            const availableModels = (listData.models || [])
+              .filter((m: any) => Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes('generateContent'))
+              .map((m: any) => m.name.replace(/^models\//, ''));
+
+            for (const dynamicModel of availableModels) {
+              try {
+                const dynRes = await fetch(
+                  `https://generativelanguage.googleapis.com/v1beta/models/${dynamicModel}:generateContent?key=${apiKey}`,
+                  {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ contents: [{ parts: [{ text: systemPrompt }] }] })
+                  }
+                );
+
+                if (dynRes.ok) {
+                  const dynData = await dynRes.json();
+                  rawText = dynData?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+                  if (rawText) {
+                    usedProvider = dynamicModel;
+                    break;
+                  }
+                }
+              } catch (dErr) {}
+            }
+          }
+        } catch (discErr) {}
       }
 
       if (!rawText) {
