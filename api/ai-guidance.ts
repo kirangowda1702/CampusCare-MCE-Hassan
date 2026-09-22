@@ -378,88 +378,60 @@ JSON Schema:
     try {
       const candidateModels = [
         'gemini-3.8-flash',
-        'gemini-3.8-pro',
-        'gemini-3.8-flash-exp',
         'gemini-2.5-flash',
         'gemini-2.0-flash'
       ];
       let rawText = '';
       let usedProvider = '';
-      const modelErrors: string[] = [];
 
       for (const model of candidateModels) {
-        // Attempt with retry if 503 high demand spike occurs
-        for (let attempt = 0; attempt < 3; attempt++) {
-          try {
-            if (attempt > 0) {
-              await new Promise(r => setTimeout(r, 1000 * attempt));
+        try {
+          const geminiRes = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              signal: AbortSignal.timeout(4500),
+              body: JSON.stringify({
+                contents: [{ parts: [{ text: systemPrompt }] }],
+                generationConfig: { responseMimeType: 'application/json' }
+              })
             }
+          );
 
-            const geminiRes = await fetch(
-              `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
-              {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                  contents: [{ parts: [{ text: systemPrompt }] }],
-                  generationConfig: {
-                    responseMimeType: 'application/json'
-                  }
-                })
-              }
-            );
-
-            if (geminiRes.ok) {
-              const geminiData = await geminiRes.json();
-              rawText = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-              if (rawText) {
-                usedProvider = model;
-                break;
-              }
-            } else if (geminiRes.status === 503) {
-              // High demand spike - retry
-              const errBody = await geminiRes.text().catch(() => '');
-              modelErrors.push(`${model} [attempt ${attempt + 1}] (HTTP 503): ${errBody.slice(0, 100).replace(apiKey, '[REDACTED]')}`);
-              continue;
-            } else {
-              const errBody = await geminiRes.text().catch(() => '');
-              const sanitizedErr = `${model} (HTTP ${geminiRes.status}): ${errBody.replace(/[\r\n]+/g, ' ').slice(0, 300).replace(apiKey, '[REDACTED]')}`;
-              modelErrors.push(sanitizedErr);
+          if (geminiRes.ok) {
+            const geminiData = await geminiRes.json();
+            rawText = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+            if (rawText) {
+              usedProvider = model;
               break;
             }
-          } catch (mErr: any) {
-            modelErrors.push(`${model} (fetch err): ${mErr?.message}`);
-            break;
           }
-        }
-
-        if (rawText) {
-          break;
-        }
+        } catch (mErr: any) {}
       }
 
-      let listModelsDebug = '';
       if (!rawText) {
         // Dynamic discovery of available models for this specific API key
         try {
-          const listRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
+          const listRes = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`,
+            { signal: AbortSignal.timeout(3000) }
+          );
           if (listRes.ok) {
             const listData = await listRes.json();
             const availableModels = (listData.models || [])
               .filter((m: any) => Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes('generateContent'))
               .map((m: any) => m.name.replace(/^models\//, ''));
 
-            listModelsDebug = `Found ${availableModels.length} models: ${availableModels.slice(0, 10).join(', ')}`;
-
             for (const dynamicModel of availableModels) {
+              if (candidateModels.includes(dynamicModel)) continue;
               try {
                 const dynRes = await fetch(
                   `https://generativelanguage.googleapis.com/v1beta/models/${dynamicModel}:generateContent?key=${apiKey}`,
                   {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
+                    signal: AbortSignal.timeout(4500),
                     body: JSON.stringify({
                       contents: [{ parts: [{ text: systemPrompt }] }],
                       generationConfig: { responseMimeType: 'application/json' }
@@ -474,30 +446,16 @@ JSON Schema:
                     usedProvider = dynamicModel;
                     break;
                   }
-                } else {
-                  const dErr = await dynRes.text().catch(() => '');
-                  modelErrors.push(`dynamic ${dynamicModel} (HTTP ${dynRes.status}): ${dErr.replace(/[\r\n]+/g, ' ').slice(0, 150).replace(apiKey, '[REDACTED]')}`);
                 }
-              } catch (dErr: any) {
-                modelErrors.push(`dynamic ${dynamicModel} fetch err: ${dErr?.message}`);
-              }
+              } catch (dErr) {}
             }
-          } else {
-            const lErr = await listRes.text().catch(() => '');
-            listModelsDebug = `ListModels HTTP ${listRes.status}: ${lErr.replace(/[\r\n]+/g, ' ').slice(0, 200).replace(apiKey, '[REDACTED]')}`;
           }
-        } catch (discErr: any) {
-          listModelsDebug = `ListModels error: ${discErr?.message}`;
-        }
+        } catch (discErr) {}
       }
 
       if (!rawText) {
         return res.status(503).json({
-          error: 'AI Health Guidance is currently unavailable. Please consult a doctor or contact Campus Health Centre.',
-          diagnostic: {
-            listModels: listModelsDebug,
-            modelErrors: modelErrors.map(e => e.replace(/[A-Za-z0-9_-]{25,}/g, '[REDACTED]'))
-          }
+          error: 'AI Health Guidance is currently unavailable. Please consult a doctor or contact Campus Health Centre.'
         });
       }
 
@@ -569,8 +527,7 @@ JSON Schema:
     } catch (apiErr: any) {
       console.error('Gemini call failure:', apiErr);
       return res.status(503).json({
-        error: 'AI Health Guidance is currently unavailable. Please consult a doctor or contact Campus Health Centre.',
-        diagnostic: `Exception: ${apiErr?.message || String(apiErr)}`
+        error: 'AI Health Guidance is currently unavailable. Please consult a doctor or contact Campus Health Centre.'
       });
     }
 
