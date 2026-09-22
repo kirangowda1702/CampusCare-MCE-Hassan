@@ -377,55 +377,27 @@ JSON Schema:
 
     try {
       let rawText = '';
-      let usedProvider = '';
+      const primaryModel = 'gemini-3.8-flash';
 
-      // 1. Dynamic discovery of available models for this specific API key
-      let activeModels: string[] = ['gemini-3.8-flash', 'gemini-2.5-flash', 'gemini-2.0-flash'];
       try {
-        const listRes = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`,
-          { signal: AbortSignal.timeout(3000) }
+        const geminiRes = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${primaryModel}:generateContent?key=${apiKey}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            signal: AbortSignal.timeout(6000),
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: systemPrompt }] }]
+            })
+          }
         );
-        if (listRes.ok) {
-          const listData = await listRes.json();
-          const discovered = (listData.models || [])
-            .filter((m: any) => Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes('generateContent'))
-            .map((m: any) => m.name.replace(/^models\//, ''));
 
-          if (discovered.length > 0) {
-            activeModels = discovered.sort((a: string, b: string) => {
-              if (a.includes('gemini') && !b.includes('gemini')) return -1;
-              if (!a.includes('gemini') && b.includes('gemini')) return 1;
-              return 0;
-            });
-          }
+        if (geminiRes.ok) {
+          const geminiData = await geminiRes.json();
+          rawText = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || '';
         }
-      } catch (listErr) {}
-
-      // 2. Query the best available model
-      for (const model of activeModels.slice(0, 3)) {
-        try {
-          const geminiRes = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
-            {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              signal: AbortSignal.timeout(4500),
-              body: JSON.stringify({
-                contents: [{ parts: [{ text: systemPrompt }] }]
-              })
-            }
-          );
-
-          if (geminiRes.ok) {
-            const geminiData = await geminiRes.json();
-            rawText = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-            if (rawText) {
-              usedProvider = model;
-              break;
-            }
-          }
-        } catch (mErr: any) {}
+      } catch (geminiErr: any) {
+        // Immediate safe exit on upstream timeout or network failure
       }
 
       if (!rawText) {
@@ -513,7 +485,7 @@ JSON Schema:
         emergency: urgency === 'EMERGENCY',
         disclaimer: 'This tool provides general health guidance and does not replace diagnosis, treatment, or emergency care from a qualified healthcare professional.',
         isRealAI: true,
-        provider: usedProvider
+        provider: primaryModel
       });
 
     } catch (apiErr: any) {
