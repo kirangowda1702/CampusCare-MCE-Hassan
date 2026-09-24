@@ -23,7 +23,9 @@ import {
   Loader2,
   ShieldCheck,
   Info,
-  ChevronRight
+  ChevronRight,
+  X,
+  Minus
 } from 'lucide-react';
 import { SymptomGuidanceRequest, SymptomGuidanceResponse, MedicineInfo, Doctor } from '../../types';
 import { Link, useNavigate } from 'react-router-dom';
@@ -66,7 +68,17 @@ type ConversationStage =
   | 'analyzing'
   | 'completed';
 
-export const SymptomTriage: React.FC = () => {
+export interface SymptomTriageProps {
+  isCompact?: boolean;
+  onClose?: () => void;
+  onMinimize?: () => void;
+}
+
+export const SymptomTriage: React.FC<SymptomTriageProps> = ({
+  isCompact = false,
+  onClose,
+  onMinimize
+}) => {
   const navigate = useNavigate();
   const { setIsEmergencyModalOpen } = useEmergency();
 
@@ -114,16 +126,15 @@ export const SymptomTriage: React.FC = () => {
       id: 'msg-welcome-' + Date.now(),
       sender: 'bot',
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      text: "Hi! I'm CampusCare AI 👋\n\nI can help you understand your symptoms, ask a few follow-up questions, explain possible causes, and suggest what type of healthcare professional you may want to consult.\n\nI cannot diagnose medical conditions or replace a doctor.\n\nWhat are you experiencing today?",
+      text: "Hi 👋 I'm CampusCare AI.\n\nI can help you understand your symptoms, ask a few follow-up questions, and guide you toward appropriate healthcare options.\n\nI can't diagnose medical conditions or replace a doctor.\n\nHow can I help you today?",
       quickChoices: [
         { label: '🤕 Headache', value: 'I have a headache' },
         { label: '🤒 Fever', value: 'I have a fever' },
-        { label: '😮‍💨 Cough & Cold', value: 'I have a cough and cold' },
+        { label: '😮‍💨 Cough', value: 'I have a cough' },
         { label: '🤢 Stomach Pain', value: 'I have stomach pain' },
-        { label: '❤️ Chest Discomfort', value: 'I feel discomfort in my chest' },
-        { label: '🔴 Skin Problem', value: 'I have an itchy skin rash' },
+        { label: '🔴 Skin Problem', value: 'I have a skin problem or rash' },
         { label: '🦴 Back Pain', value: 'I have back pain' },
-        { label: '💬 Other Symptoms', value: 'I have other symptoms' }
+        { label: '💬 Other', value: 'I have other health symptoms' }
       ]
     };
     setMessages([welcomeMsg]);
@@ -443,33 +454,70 @@ export const SymptomTriage: React.FC = () => {
   }, [verifiedDoctors]);
 
   return (
-    <div className="max-w-4xl mx-auto space-y-4">
-      {/* Top Mode Selector Header */}
-      <div className="flex items-center justify-between bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-700 via-primary-600 to-amber-500 text-white flex items-center justify-center shadow-md flex-shrink-0">
-            <Bot className="w-5 h-5" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-base font-bold text-slate-900 dark:text-white">
-                CampusCare AI
-              </h2>
-              <span className="text-[10px] font-semibold bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 px-2 py-0.5 rounded-full flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                Active Triage
-              </span>
+    <div className={isCompact ? "w-full h-full flex flex-col bg-white dark:bg-slate-900 overflow-hidden" : "max-w-4xl mx-auto space-y-4"}>
+      {/* Top Header */}
+      <div className={isCompact ? "p-3.5 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex-shrink-0" : "flex items-center justify-between bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm"}>
+        <div className="flex items-center justify-between w-full gap-2">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-blue-900 text-amber-400 flex items-center justify-center shadow-md flex-shrink-0 text-base font-bold">
+              🤖
             </div>
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              Smart Health Guidance Assistant • Educational triage, not a diagnosis
-            </p>
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm sm:text-base font-extrabold text-slate-900 dark:text-white leading-tight">
+                  CampusCare AI
+                </h2>
+                <span className="text-[10px] font-semibold bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 px-2 py-0.5 rounded-full flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                  AI guidance • Not a diagnosis
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                Smart Health Guidance Assistant
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1">
+            <button
+              onClick={initWelcome}
+              title="Start New Conversation"
+              aria-label="Start New Conversation"
+              className="p-1.5 sm:p-2 rounded-xl text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-all flex items-center gap-1 text-xs font-semibold"
+            >
+              <RotateCcw className="w-4 h-4" />
+              {!isCompact && <span className="hidden sm:inline">New Chat</span>}
+            </button>
+
+            {isCompact && onMinimize && (
+              <button
+                onClick={onMinimize}
+                title="Minimize"
+                aria-label="Minimize Chat"
+                className="p-1.5 rounded-xl text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-all"
+              >
+                <Minus className="w-4 h-4" />
+              </button>
+            )}
+
+            {isCompact && onClose && (
+              <button
+                onClick={onClose}
+                title="Close"
+                aria-label="Close Chat"
+                className="p-1.5 rounded-xl text-slate-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50 transition-all"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        {/* Mode Selector Tabs */}
+        <div className={`flex items-center gap-1.5 ${isCompact ? 'mt-2.5 pt-2 border-t border-slate-100 dark:border-slate-800' : 'hidden sm:flex'}`}>
           <button
             onClick={() => setActiveMode('chat')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+            className={`flex-1 sm:flex-none px-3 py-1.5 rounded-xl text-xs font-bold transition-all text-center ${
               activeMode === 'chat'
                 ? 'bg-blue-900 text-white shadow-sm'
                 : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
@@ -479,21 +527,13 @@ export const SymptomTriage: React.FC = () => {
           </button>
           <button
             onClick={() => setActiveMode('medicine')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+            className={`flex-1 sm:flex-none px-3 py-1.5 rounded-xl text-xs font-bold transition-all text-center ${
               activeMode === 'medicine'
                 ? 'bg-blue-900 text-white shadow-sm'
                 : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
             }`}
           >
             💊 Medicine Search
-          </button>
-          <button
-            onClick={initWelcome}
-            title="Start New Conversation"
-            className="p-2 rounded-xl text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-all flex items-center gap-1 text-xs font-semibold"
-          >
-            <RotateCcw className="w-4 h-4" />
-            <span className="hidden sm:inline">New Chat</span>
           </button>
         </div>
       </div>
@@ -502,9 +542,9 @@ export const SymptomTriage: React.FC = () => {
         /* ========================================================================= */
         /* CONVERSATIONAL CHAT INTERFACE                                             */
         /* ========================================================================= */
-        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col h-[650px] overflow-hidden">
+        <div className={isCompact ? "flex-1 flex flex-col min-h-0 overflow-hidden" : "bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col h-[650px] overflow-hidden"}>
           {/* Messages Scroll Area */}
-          <div className="flex-1 p-4 sm:p-6 overflow-y-auto space-y-4 bg-slate-50/50 dark:bg-slate-950/40">
+          <div className="flex-1 p-3.5 sm:p-5 overflow-y-auto space-y-4 bg-slate-50/50 dark:bg-slate-950/40">
             {messages.map(msg => (
               <div
                 key={msg.id}
@@ -812,7 +852,7 @@ export const SymptomTriage: React.FC = () => {
         /* ========================================================================= */
         /* MEDICINE SEARCH TAB (Active Ingredient & Safety Cautions)                 */
         /* ========================================================================= */
-        <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-6">
+        <div className={isCompact ? "flex-1 overflow-y-auto p-4 space-y-4 bg-white dark:bg-slate-900" : "bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-6"}>
           <div className="flex items-center gap-3 pb-4 border-b border-slate-100 dark:border-slate-800">
             <div className="w-10 h-10 rounded-xl bg-emerald-500 text-white flex items-center justify-center">
               <Pill className="w-5 h-5" />

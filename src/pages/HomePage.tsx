@@ -30,6 +30,7 @@ import { CampusMap } from '../components/feedback/CampusMap';
 import { useEmergency } from '../context/EmergencyContext';
 import { useAuth } from '../context/AuthContext';
 import { DemoLoginModal } from '../features/auth/DemoLoginModal';
+import { FloatingMedicalAssistant } from '../components/common/FloatingMedicalAssistant';
 
 export const HomePage: React.FC = () => {
   const { setIsEmergencyModalOpen } = useEmergency();
@@ -361,6 +362,9 @@ export const HomePage: React.FC = () => {
       </section>
 
       <DemoLoginModal isOpen={isDemoModalOpen} onClose={() => setIsDemoModalOpen(false)} />
+      
+      {/* Floating Medical AI Assistant */}
+      <FloatingMedicalAssistant />
     </div>
   );
 };
