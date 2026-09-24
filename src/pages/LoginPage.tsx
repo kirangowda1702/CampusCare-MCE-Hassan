@@ -1,43 +1,59 @@
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { HeartPulse, Mail, Lock, LogIn, GraduationCap, Stethoscope, BookOpen, ShieldCheck } from 'lucide-react';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { HeartPulse, Mail, Lock, LogIn, GraduationCap, Stethoscope, ShieldCheck, Loader2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { UserRole } from '../types';
 
 export const LoginPage: React.FC = () => {
-  const { loginAsRole, loginAsUser, loginWithEmail } = useAuth();
+  const { loginWithEmail } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [selectedRole, setSelectedRole] = useState<UserRole>('student');
   const [error, setError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleCustomLogin = (e: React.FormEvent) => {
+  const fromPath = (location.state as any)?.from?.pathname;
+
+  const handleCustomLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email) {
-      setError('Please enter your MCE email or Doctor ID');
+    setError('');
+
+    if (!email.trim() || !password) {
+      setError('Please enter both your institution email and password.');
       return;
     }
-    loginWithEmail(email, selectedRole);
-    if (selectedRole === 'doctor' || email.toLowerCase().includes('doctor') || email.toLowerCase().includes('kiran') || email.toLowerCase().includes('madan')) {
-      navigate('/doctor/dashboard');
-    } else if (selectedRole === 'admin') navigate('/admin/dashboard');
-    else if (selectedRole === 'faculty') navigate('/faculty/dashboard');
-    else navigate('/student/dashboard');
+
+    setIsSubmitting(true);
+    try {
+      const res = await loginWithEmail(email.trim(), password, selectedRole);
+      if (!res.success) {
+        setError(res.error || 'Authentication failed. Please verify your credentials.');
+      } else {
+        if (fromPath) {
+          navigate(fromPath, { replace: true });
+        } else {
+          const userRole = res.user?.role || selectedRole;
+          if (userRole === 'doctor') navigate('/doctor/dashboard', { replace: true });
+          else if (userRole === 'admin') navigate('/admin/dashboard', { replace: true });
+          else if (userRole === 'faculty') navigate('/faculty/dashboard', { replace: true });
+          else navigate('/student/dashboard', { replace: true });
+        }
+      }
+    } catch (err: any) {
+      setError(err.message || 'Unable to complete sign in. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  const handleQuickDemo = (role: UserRole) => {
-    loginAsRole(role);
-    if (role === 'doctor') navigate('/doctor/dashboard');
-    else if (role === 'admin') navigate('/admin/dashboard');
-    else if (role === 'faculty') navigate('/faculty/dashboard');
-    else navigate('/student/dashboard');
-  };
-
-  const handleDoctorLogin = (userId: string) => {
-    loginAsUser(userId);
-    navigate('/doctor/dashboard');
+  const handleFillCredentials = (fillEmail: string, role: UserRole) => {
+    setEmail(fillEmail);
+    setSelectedRole(role);
+    setPassword('CampusCare@2026');
+    setError('');
   };
 
   return (
@@ -55,36 +71,40 @@ export const LoginPage: React.FC = () => {
 
         <div className="p-4 rounded-2xl bg-primary-50/80 dark:bg-primary-950/50 border border-primary-200 dark:border-primary-900 space-y-2.5">
           <div className="text-xs font-bold text-primary-900 dark:text-primary-200 flex items-center justify-between">
-            <span>⚡ 1-Click Fast Demo Logins:</span>
+            <span>⚡ Institutional Sample Accounts:</span>
             <span className="text-[10px] bg-primary-200 dark:bg-primary-900 text-primary-800 dark:text-primary-300 px-2 py-0.5 rounded font-mono">
-              Ready
+              Supabase Auth
             </span>
           </div>
 
           <div className="grid grid-cols-2 gap-2">
             <button
-              onClick={() => handleQuickDemo('student')}
+              type="button"
+              onClick={() => handleFillCredentials('rahul.sharma@mcehassan.ac.in', 'student')}
               className="py-2 px-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-primary-500 text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5 shadow-sm transition-all text-left"
             >
               <GraduationCap className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" /> Student (Rahul)
             </button>
             <button
-              onClick={() => handleDoctorLogin('usr-doctor-kiran')}
+              type="button"
+              onClick={() => handleFillCredentials('dr.kiran.gowda@mcehassan.ac.in', 'doctor')}
               className="py-2 px-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-primary-500 text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5 shadow-sm transition-all text-left"
             >
               <Stethoscope className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0" /> Dr. Kiran (DOC001)
             </button>
             <button
-              onClick={() => handleDoctorLogin('usr-doctor-madan')}
+              type="button"
+              onClick={() => handleFillCredentials('dr.madan.sk@mcehassan.ac.in', 'doctor')}
               className="py-2 px-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-primary-500 text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5 shadow-sm transition-all text-left"
             >
               <Stethoscope className="w-3.5 h-3.5 text-teal-500 flex-shrink-0" /> Dr. Madan (DOC002)
             </button>
             <button
-              onClick={() => handleQuickDemo('admin')}
+              type="button"
+              onClick={() => handleFillCredentials('admin@mcehassan.ac.in', 'admin')}
               className="py-2 px-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-primary-500 text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5 shadow-sm transition-all text-left"
             >
-              <ShieldCheck className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" /> Admin
+              <ShieldCheck className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" /> Campus Admin
             </button>
           </div>
         </div>
@@ -92,7 +112,7 @@ export const LoginPage: React.FC = () => {
         <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm space-y-4">
           <form onSubmit={handleCustomLogin} className="space-y-4">
             {error && (
-              <div className="p-2.5 rounded-xl bg-rose-50 text-rose-700 text-xs font-semibold">
+              <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-900 text-rose-700 dark:text-rose-300 text-xs font-semibold">
                 {error}
               </div>
             )}
@@ -101,8 +121,8 @@ export const LoginPage: React.FC = () => {
               <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                 Select Your Role
               </label>
-              <div className="grid grid-cols-3 gap-1.5">
-                {(['student', 'faculty', 'doctor'] as UserRole[]).map(r => (
+              <div className="grid grid-cols-4 gap-1.5">
+                {(['student', 'doctor', 'faculty', 'admin'] as UserRole[]).map(r => (
                   <button
                     key={r}
                     type="button"
@@ -121,16 +141,16 @@ export const LoginPage: React.FC = () => {
 
             <div>
               <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                MCE Email / USN / ID
+                Institution Email / Username
               </label>
               <div className="relative">
                 <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
                 <input
-                  type="text"
+                  type="email"
                   required
                   value={email}
                   onChange={e => setEmail(e.target.value)}
-                  placeholder="e.g. rahul.sharma@mcehassan.ac.in"
+                  placeholder="name@mcehassan.ac.in"
                   className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs font-medium focus:ring-2 focus:ring-primary-500"
                 />
               </div>
@@ -160,9 +180,18 @@ export const LoginPage: React.FC = () => {
 
             <button
               type="submit"
-              className="w-full py-2.5 px-4 rounded-xl bg-primary-600 hover:bg-primary-700 text-white font-bold text-xs shadow transition-all flex items-center justify-center gap-1.5"
+              disabled={isSubmitting}
+              className="w-full py-2.5 px-4 rounded-xl bg-primary-600 hover:bg-primary-700 disabled:opacity-60 text-white font-bold text-xs shadow transition-all flex items-center justify-center gap-1.5"
             >
-              <LogIn className="w-4 h-4" /> Sign In
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" /> Authenticating...
+                </>
+              ) : (
+                <>
+                  <LogIn className="w-4 h-4" /> Sign In
+                </>
+              )}
             </button>
           </form>
 
@@ -177,3 +206,4 @@ export const LoginPage: React.FC = () => {
     </div>
   );
 };
+

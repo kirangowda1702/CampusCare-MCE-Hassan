@@ -459,10 +459,12 @@ export interface SymptomGuidanceRequest {
   currentMedications?: string;
   allergies?: string;
   pregnancyStatus?: string;
+  followUpAnswers?: Record<string, any>;
 }
 
 export interface SymptomGuidanceResponse {
   symptom_summary: string;
+  follow_up_questions?: string[];
   possible_conditions: PossibleCondition[];
   urgency: UrgencyLevel;
   red_flags: string[];
@@ -476,5 +478,6 @@ export interface SymptomGuidanceResponse {
   isRealAI?: boolean;
   provider?: string;
 }
+
 
 

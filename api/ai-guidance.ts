@@ -72,20 +72,20 @@ const VERIFIED_MEDICINE_DATABASE: Record<string, {
   paracetamol: {
     name: 'Paracetamol (Acetaminophen)',
     general_use: 'Used for temporary relief of mild-to-moderate pain and reduction of fever.',
-    warnings: 'Severe liver damage may occur if you take more than 4,000 mg in 24 hours or consume alcohol while taking this medicine.',
-    cautions: 'Do not exceed maximum daily dosage. Exercise caution in pre-existing liver disease or severe renal impairment.',
-    side_effects: 'Generally mild when taken as directed; allergic reactions, skin rash, or liver toxicity in overdose.',
-    interaction_warnings: 'Do not take with any other medicine containing paracetamol or acetaminophen to prevent accidental overdose.',
+    warnings: 'Severe liver injury may occur if taken in excessive amounts, with alcohol, or when combined with other acetaminophen-containing products.',
+    cautions: 'Strictly follow package label or clinician/pharmacist dosing instructions. Do not combine with other products containing paracetamol/acetaminophen. Exercise caution in pre-existing liver disease or chronic alcohol use.',
+    side_effects: 'Generally well-tolerated at recommended doses; potential allergic skin reactions or acute hepatic toxicity in overdose.',
+    interaction_warnings: 'Do not take alongside other paracetamol/acetaminophen-containing medications (including cold/flu remedies) to prevent accidental overdose.',
     source: 'MedlinePlus Drug Information',
     source_url: 'https://medlineplus.gov/druginfo/meds/a681004.html'
   },
   acetaminophen: {
     name: 'Paracetamol (Acetaminophen)',
     general_use: 'Used for temporary relief of mild-to-moderate pain and reduction of fever.',
-    warnings: 'Severe liver damage may occur if you take more than 4,000 mg in 24 hours or consume alcohol while taking this medicine.',
-    cautions: 'Do not exceed maximum daily dosage. Exercise caution in pre-existing liver disease or severe renal impairment.',
-    side_effects: 'Generally mild when taken as directed; allergic reactions, skin rash, or liver toxicity in overdose.',
-    interaction_warnings: 'Do not take with any other medicine containing paracetamol or acetaminophen to prevent accidental overdose.',
+    warnings: 'Severe liver injury may occur if taken in excessive amounts, with alcohol, or when combined with other acetaminophen-containing products.',
+    cautions: 'Strictly follow package label or clinician/pharmacist dosing instructions. Do not combine with other products containing paracetamol/acetaminophen. Exercise caution in pre-existing liver disease or chronic alcohol use.',
+    side_effects: 'Generally well-tolerated at recommended doses; potential allergic skin reactions or acute hepatic toxicity in overdose.',
+    interaction_warnings: 'Do not take alongside other paracetamol/acetaminophen-containing medications (including cold/flu remedies) to prevent accidental overdose.',
     source: 'MedlinePlus Drug Information',
     source_url: 'https://medlineplus.gov/druginfo/meds/a681004.html'
   },
@@ -183,7 +183,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       currentMedications = '',
       allergies = '',
       pregnancyStatus = 'not_applicable',
-      medicineQuery = ''
+      medicineQuery = '',
+      followUpAnswers = {}
     } = req.body || {};
 
     // ==========================================
@@ -325,6 +326,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
+    // Format follow-up answers if present
+    const formattedFollowUps = Object.entries(followUpAnswers || {})
+      .filter(([_, v]) => v !== undefined && v !== '' && (Array.isArray(v) ? v.length > 0 : true))
+      .map(([k, v]) => `  * ${k}: ${Array.isArray(v) ? v.join(', ') : String(v)}`)
+      .join('\n');
+
     const systemPrompt = `You are an evidence-based clinical decision-support and health guidance assistant for CampusCare at Malnad College of Engineering (MCE), Hassan, Karnataka.
 Analyze the user's reported symptoms and follow-up clinical context.
 
@@ -351,6 +358,7 @@ Patient Context:
 - Current Medications: ${sanitize(currentMedications) || 'None reported'}
 - Allergies: ${sanitize(allergies) || 'None reported'}
 - Pregnancy Status: ${sanitize(pregnancyStatus)}
+${formattedFollowUps ? `- Clinical Follow-Up Responses:\n${formattedFollowUps}` : ''}
 
 Evidence Sources Available:
 ${finalSources.map(s => `- ${s.name} (${s.url})`).join('\n')}
@@ -358,6 +366,9 @@ ${finalSources.map(s => `- ${s.name} (${s.url})`).join('\n')}
 JSON Schema:
 {
   "symptom_summary": "1-2 sentence clinical summary of reported symptoms",
+  "follow_up_questions": [
+    "2-3 relevant clinical questions the student can prepare to discuss with their consulting doctor"
+  ],
   "possible_conditions": [
     { "name": "Condition name (e.g. Tension-type headache, Dehydration, Sinusitis)", "likelihood": "Low" | "Possible" | "Moderate" | "High", "explanation": "Brief clinical explanation to discuss with a doctor" }
   ],
@@ -445,6 +456,10 @@ JSON Schema:
 
         parsed = {
           symptom_summary: sanitize(rawText.replace(/[*#]/g, ' ').replace(/\s+/g, ' ').slice(0, 250)),
+          follow_up_questions: [
+            'How frequently do these symptoms occur during your typical week?',
+            'Do specific activities, foods, or screen times trigger or worsen the sensation?'
+          ],
           possible_conditions: extractedConditions,
           urgency: clampedSeverity >= 7 ? 'URGENT' : clampedSeverity >= 4 ? 'MODERATE' : 'LOW',
           red_flags: ['Sudden explosive headache', 'Fever with stiff neck', 'Visual disturbance or neurological deficit'],
@@ -454,7 +469,7 @@ JSON Schema:
             'Common OTC options that may be used for this symptom include Paracetamol (Acetaminophen) or Ibuprofen taken with food, plus hydration and rest.'
           ],
           medicine_precautions: [
-            'Do not exceed maximum daily dosage for Paracetamol (4,000 mg/day).',
+            'Follow packaging instructions or clinician advice; never exceed manufacturer maximum daily limits.',
             'Always take NSAIDs with food or milk.',
             'Consult a doctor if headache persists beyond 48-72 hours or worsens.'
           ]
@@ -468,6 +483,12 @@ JSON Schema:
 
       return res.status(200).json({
         symptom_summary: sanitize(parsed.symptom_summary || parsed.summary || 'Symptom analysis completed.'),
+        follow_up_questions: Array.isArray(parsed.follow_up_questions)
+          ? parsed.follow_up_questions.map((q: any) => sanitize(String(q)))
+          : [
+              'When did you first notice these symptoms?',
+              'Have you experienced similar episodes in the past?'
+            ],
         possible_conditions: Array.isArray(parsed.possible_conditions)
           ? parsed.possible_conditions.slice(0, 4).map((c: any) => ({
               name: sanitize(c.name || 'Clinical Observation'),

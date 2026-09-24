@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { HeartPulse, UserPlus, GraduationCap, Stethoscope, BookOpen } from 'lucide-react';
+import { HeartPulse, UserPlus, GraduationCap, Stethoscope, BookOpen, Lock, Loader2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { UserRole } from '../types';
 
@@ -11,6 +11,7 @@ export const RegisterPage: React.FC = () => {
   const [role, setRole] = useState<UserRole>('student');
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [phone, setPhone] = useState('');
   const [usn, setUsn] = useState('');
   const [branch, setBranch] = useState('Computer Science & Engineering');
@@ -18,25 +19,53 @@ export const RegisterPage: React.FC = () => {
   const [empId, setEmpId] = useState('');
   const [license, setLicense] = useState('');
   const [specialization, setSpecialization] = useState('General Medicine');
+  const [error, setError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    registerUser({
-      fullName,
-      email,
-      phone,
-      role,
-      usn: role === 'student' ? usn : undefined,
-      branch: role === 'student' ? branch : undefined,
-      semester: role === 'student' ? semester : undefined,
-      employeeId: role === 'faculty' ? empId : undefined,
-      licenseNumber: role === 'doctor' ? license : undefined,
-      specialization: role === 'doctor' ? specialization : undefined
-    });
-    alert('Account created successfully! Redirecting to your dashboard.');
-    if (role === 'doctor') navigate('/doctor/dashboard');
-    else if (role === 'faculty') navigate('/faculty/dashboard');
-    else navigate('/student/dashboard');
+    setError('');
+
+    if (!email || !password) {
+      setError('Please provide your email and password.');
+      return;
+    }
+
+    if (password.length < 6) {
+      setError('Password must be at least 6 characters.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const res = await registerUser(
+        {
+          fullName,
+          email,
+          phone,
+          role,
+          usn: role === 'student' ? usn : undefined,
+          branch: role === 'student' ? branch : undefined,
+          semester: role === 'student' ? semester : undefined,
+          employeeId: role === 'faculty' ? empId : undefined,
+          licenseNumber: role === 'doctor' ? license : undefined,
+          specialization: role === 'doctor' ? specialization : undefined
+        },
+        password
+      );
+
+      if (!res.success) {
+        setError(res.error || 'Registration failed. Please try again.');
+      } else {
+        if (role === 'doctor') navigate('/doctor/dashboard');
+        else if (role === 'faculty') navigate('/faculty/dashboard');
+        else navigate('/student/dashboard');
+      }
+    } catch (err: any) {
+      setError(err.message || 'Unable to register account.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -85,6 +114,12 @@ export const RegisterPage: React.FC = () => {
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
+            {error && (
+              <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-900 text-rose-700 dark:text-rose-300 text-xs font-semibold">
+                {error}
+              </div>
+            )}
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
@@ -118,6 +153,23 @@ export const RegisterPage: React.FC = () => {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Password *
+                </label>
+                <div className="relative">
+                  <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                  <input
+                    type="password"
+                    required
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    placeholder="At least 6 characters"
+                    className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs font-medium"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                   Phone Number *
                 </label>
                 <input
@@ -129,7 +181,9 @@ export const RegisterPage: React.FC = () => {
                   className="w-full py-2 px-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs font-medium"
                 />
               </div>
+            </div>
 
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {role === 'student' && (
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
@@ -181,9 +235,18 @@ export const RegisterPage: React.FC = () => {
 
             <button
               type="submit"
-              className="w-full py-3 px-4 rounded-xl bg-primary-600 hover:bg-primary-700 text-white font-bold text-xs shadow transition-all flex items-center justify-center gap-1.5 mt-2"
+              disabled={isSubmitting}
+              className="w-full py-3 px-4 rounded-xl bg-primary-600 hover:bg-primary-700 disabled:opacity-60 text-white font-bold text-xs shadow transition-all flex items-center justify-center gap-1.5 mt-2"
             >
-              <UserPlus className="w-4 h-4" /> Create CampusCare Account
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" /> Creating Account...
+                </>
+              ) : (
+                <>
+                  <UserPlus className="w-4 h-4" /> Create CampusCare Account
+                </>
+              )}
             </button>
           </form>
 

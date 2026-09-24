@@ -15,12 +15,8 @@ export const DemoLoginModal: React.FC<DemoLoginModalProps> = ({ isOpen, onClose 
   const navigate = useNavigate();
 
   const handleSelectRole = (role: UserRole) => {
-    loginAsRole(role);
     onClose();
-    if (role === 'doctor') navigate('/doctor/dashboard');
-    else if (role === 'admin') navigate('/admin/dashboard');
-    else if (role === 'faculty') navigate('/faculty/dashboard');
-    else navigate('/student/dashboard');
+    navigate('/login', { state: { preferredRole: role } });
   };
 
   const roles = [
