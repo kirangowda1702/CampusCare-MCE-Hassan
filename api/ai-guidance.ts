@@ -160,6 +160,84 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).end();
   }
 
+  // ==========================================
+  // SAFE DIAGNOSTIC HEALTH CHECK
+  // ==========================================
+  if (req.method === 'GET' || req.body?.healthCheck === true || req.query?.healthCheck === 'true') {
+    const apiKey = process.env.GEMINI_API_KEY || '';
+    if (!apiKey || apiKey.length < 10) {
+      return res.status(200).json({
+        health: 'FAIL',
+        keyDetected: false,
+        keyLength: apiKey.length,
+        message: 'GEMINI_API_KEY environment variable is not configured or too short in Vercel serverless environment.'
+      });
+    }
+
+    const candidateModels = ['gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-2.5-flash'];
+    let lastProbeResult: any = null;
+
+    for (const m of candidateModels) {
+      try {
+        const probeRes = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${apiKey}`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-goog-api-key': apiKey
+            },
+            signal: AbortSignal.timeout(6000),
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: 'Reply with exactly: GEMINI_OK' }] }]
+            })
+          }
+        );
+
+        const httpStatus = probeRes.status;
+        if (probeRes.ok) {
+          const probeData = await probeRes.json();
+          const replyText = probeData?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+          return res.status(200).json({
+            health: 'PASS',
+            keyDetected: true,
+            keyLength: apiKey.length,
+            activeModel: m,
+            httpStatus,
+            geminiReply: replyText,
+            serverTimestamp: new Date().toISOString()
+          });
+        } else {
+          const errData = await probeRes.json().catch(() => ({}));
+          const safeErrorMsg = errData?.error?.message || `HTTP ${httpStatus}`;
+          lastProbeResult = {
+            health: 'FAIL',
+            keyDetected: true,
+            keyLength: apiKey.length,
+            failedModel: m,
+            httpStatus,
+            error: safeErrorMsg
+          };
+        }
+      } catch (err: any) {
+        lastProbeResult = {
+          health: 'FAIL',
+          keyDetected: true,
+          keyLength: apiKey.length,
+          failedModel: m,
+          error: err.message || 'Upstream network timeout'
+        };
+      }
+    }
+
+    return res.status(200).json(lastProbeResult || {
+      health: 'FAIL',
+      keyDetected: true,
+      keyLength: apiKey.length,
+      error: 'All Gemini candidate models failed to respond.'
+    });
+  }
+
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
@@ -388,27 +466,38 @@ JSON Schema:
 
     try {
       let rawText = '';
-      const primaryModel = 'gemma-4-31b-it';
+      let successfulModel = '';
+      const candidateModels = ['gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-2.5-flash'];
 
-      try {
-        const geminiRes = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/${primaryModel}:generateContent?key=${apiKey}`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            signal: AbortSignal.timeout(8500),
-            body: JSON.stringify({
-              contents: [{ parts: [{ text: systemPrompt }] }]
-            })
+      for (const m of candidateModels) {
+        try {
+          const geminiRes = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${apiKey}`,
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'x-goog-api-key': apiKey
+              },
+              signal: AbortSignal.timeout(8000),
+              body: JSON.stringify({
+                contents: [{ parts: [{ text: systemPrompt }] }]
+              })
+            }
+          );
+
+          if (geminiRes.ok) {
+            const geminiData = await geminiRes.json();
+            const candidateText = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+            if (candidateText && candidateText.trim().length > 10) {
+              rawText = candidateText;
+              successfulModel = m;
+              break;
+            }
           }
-        );
-
-        if (geminiRes.ok) {
-          const geminiData = await geminiRes.json();
-          rawText = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        } catch (geminiErr: any) {
+          // Attempt next model in cascade
         }
-      } catch (geminiErr: any) {
-        // Immediate safe exit on upstream timeout or network failure
       }
 
       if (!rawText) {
@@ -506,7 +595,7 @@ JSON Schema:
         emergency: urgency === 'EMERGENCY',
         disclaimer: 'This tool provides general health guidance and does not replace diagnosis, treatment, or emergency care from a qualified healthcare professional.',
         isRealAI: true,
-        provider: primaryModel
+        provider: successfulModel || 'Google Gemini'
       });
 
     } catch (apiErr: any) {
