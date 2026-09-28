@@ -194,12 +194,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     } catch (listErr) {}
 
     const preferredOrder = [
+      'gemma-4-26b-a4b-it',
+      'gemma-4-31b-it',
       'gemini-flash-latest',
-      'gemini-pro-latest',
-      'gemini-flash-lite-latest',
       'gemini-2.5-flash-lite',
-      'gemini-2.5-flash',
-      'gemini-2.5-pro'
+      'gemini-pro-latest'
     ];
 
     const candidateModels = (availableModels.length > 0 ? availableModels : preferredOrder)
@@ -527,12 +526,11 @@ JSON Schema:
       } catch (listErr) {}
 
       const preferredOrder = [
+        'gemma-4-26b-a4b-it',
+        'gemma-4-31b-it',
         'gemini-flash-latest',
-        'gemini-pro-latest',
-        'gemini-flash-lite-latest',
         'gemini-2.5-flash-lite',
-        'gemini-2.5-flash',
-        'gemini-2.5-pro'
+        'gemini-pro-latest'
       ];
 
       const candidateModels = (availableModels.length > 0 ? availableModels : preferredOrder)
@@ -543,7 +541,7 @@ JSON Schema:
           return (idxA !== -1 ? idxA : 99) - (idxB !== -1 ? idxB : 99);
         });
 
-      for (const m of candidateModels.slice(0, 8)) {
+      for (const m of candidateModels.slice(0, 3)) {
         try {
           const geminiRes = await fetch(
             `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${apiKey}`,
@@ -553,7 +551,7 @@ JSON Schema:
                 'Content-Type': 'application/json',
                 'x-goog-api-key': apiKey
               },
-              signal: AbortSignal.timeout(8000),
+              signal: AbortSignal.timeout(6500),
               body: JSON.stringify({
                 contents: [{ parts: [{ text: systemPrompt }] }]
               })
