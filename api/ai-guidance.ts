@@ -506,40 +506,12 @@ JSON Schema:
       let rawText = '';
       let successfulModel = '';
 
-      let availableModels: string[] = [];
-      try {
-        const listRes = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`,
-          {
-            headers: { 'x-goog-api-key': apiKey },
-            signal: AbortSignal.timeout(4000)
-          }
-        );
-        if (listRes.ok) {
-          const listData = await listRes.json();
-          const modelsList = listData?.models || [];
-          availableModels = modelsList
-            .filter((item: any) => Array.isArray(item.supportedGenerationMethods) && item.supportedGenerationMethods.includes('generateContent'))
-            .map((item: any) => (item.name || '').replace(/^models\//, ''))
-            .filter(Boolean);
-        }
-      } catch (listErr) {}
-
-      const preferredOrder = [
+      const candidateModels = [
         'gemma-4-26b-a4b-it',
         'gemma-4-31b-it',
-        'gemini-flash-latest',
         'gemini-2.5-flash-lite',
-        'gemini-pro-latest'
+        'gemini-flash-latest'
       ];
-
-      const candidateModels = (availableModels.length > 0 ? availableModels : preferredOrder)
-        .filter(m => !m.includes('tts'))
-        .sort((a, b) => {
-          const idxA = preferredOrder.indexOf(a);
-          const idxB = preferredOrder.indexOf(b);
-          return (idxA !== -1 ? idxA : 99) - (idxB !== -1 ? idxB : 99);
-        });
 
       for (const m of candidateModels.slice(0, 3)) {
         try {
