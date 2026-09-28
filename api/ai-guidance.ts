@@ -513,6 +513,7 @@ JSON Schema:
         'gemini-flash-latest'
       ];
 
+      let lastErr = '';
       for (const m of candidateModels.slice(0, 3)) {
         try {
           const geminiRes = await fetch(
@@ -532,21 +533,28 @@ JSON Schema:
 
           if (geminiRes.ok) {
             const geminiData = await geminiRes.json();
-            const candidateText = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-            if (candidateText && candidateText.trim().length > 10) {
+            const candidate = geminiData?.candidates?.[0];
+            const candidateText = candidate?.content?.parts?.[0]?.text || '';
+            if (candidateText && candidateText.trim().length > 0) {
               rawText = candidateText;
               successfulModel = m;
               break;
+            } else {
+              lastErr = `${m} returned 200 but candidate parts was empty. finishReason: ${candidate?.finishReason || 'none'}`;
             }
+          } else {
+            const errJson = await geminiRes.json().catch(() => ({}));
+            lastErr = `${m} HTTP ${geminiRes.status}: ${errJson?.error?.message || 'unknown'}`;
           }
         } catch (geminiErr: any) {
-          // Attempt next model in cascade
+          lastErr = `${m} exception: ${geminiErr?.message || 'network error'}`;
         }
       }
 
       if (!rawText) {
         return res.status(503).json({
-          error: 'AI Health Guidance is currently unavailable. Please consult a doctor or contact Campus Health Centre.'
+          error: 'AI Health Guidance is currently unavailable. Please consult a doctor or contact Campus Health Centre.',
+          diagnostic: lastErr
         });
       }
 
