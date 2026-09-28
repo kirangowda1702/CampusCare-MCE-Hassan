@@ -174,10 +174,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
-    const candidateModels = ['gemini-3.8-flash', 'gemini-3.8-pro', 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+    let availableModels: string[] = [];
+    try {
+      const listRes = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`,
+        {
+          headers: { 'x-goog-api-key': apiKey },
+          signal: AbortSignal.timeout(5000)
+        }
+      );
+      if (listRes.ok) {
+        const listData = await listRes.json();
+        const modelsList = listData?.models || [];
+        availableModels = modelsList
+          .filter((item: any) => Array.isArray(item.supportedGenerationMethods) && item.supportedGenerationMethods.includes('generateContent'))
+          .map((item: any) => (item.name || '').replace(/^models\//, ''))
+          .filter(Boolean);
+      }
+    } catch (listErr) {}
+
+    const candidateModels = availableModels.length > 0 
+      ? availableModels 
+      : ['gemini-2.0-flash-exp', 'gemini-1.5-flash-latest', 'gemini-1.5-flash-8b', 'gemini-pro'];
     let lastProbeResult: any = null;
 
-    for (const m of candidateModels) {
+    for (const m of candidateModels.slice(0, 5)) {
       try {
         const probeRes = await fetch(
           `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${apiKey}`,
@@ -203,6 +224,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             keyDetected: true,
             keyLength: apiKey.length,
             activeModel: m,
+            availableModels: availableModels.slice(0, 10),
             httpStatus,
             geminiReply: replyText,
             serverTimestamp: new Date().toISOString()
@@ -215,6 +237,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             keyDetected: true,
             keyLength: apiKey.length,
             failedModel: m,
+            availableModels: availableModels.slice(0, 10),
             httpStatus,
             error: safeErrorMsg
           };
@@ -225,6 +248,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           keyDetected: true,
           keyLength: apiKey.length,
           failedModel: m,
+          availableModels: availableModels.slice(0, 10),
           error: err.message || 'Upstream network timeout'
         };
       }
@@ -234,7 +258,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       health: 'FAIL',
       keyDetected: true,
       keyLength: apiKey.length,
-      error: 'All Gemini candidate models failed to respond.'
+      availableModels,
+      error: 'No compatible Gemini models could generate content.'
     });
   }
 
@@ -467,9 +492,31 @@ JSON Schema:
     try {
       let rawText = '';
       let successfulModel = '';
-      const candidateModels = ['gemini-3.8-flash', 'gemini-3.8-pro', 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
 
-      for (const m of candidateModels) {
+      let availableModels: string[] = [];
+      try {
+        const listRes = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`,
+          {
+            headers: { 'x-goog-api-key': apiKey },
+            signal: AbortSignal.timeout(4000)
+          }
+        );
+        if (listRes.ok) {
+          const listData = await listRes.json();
+          const modelsList = listData?.models || [];
+          availableModels = modelsList
+            .filter((item: any) => Array.isArray(item.supportedGenerationMethods) && item.supportedGenerationMethods.includes('generateContent'))
+            .map((item: any) => (item.name || '').replace(/^models\//, ''))
+            .filter(Boolean);
+        }
+      } catch (listErr) {}
+
+      const candidateModels = availableModels.length > 0
+        ? availableModels
+        : ['gemini-2.0-flash-exp', 'gemini-1.5-flash-latest', 'gemini-1.5-flash-8b', 'gemini-pro'];
+
+      for (const m of candidateModels.slice(0, 5)) {
         try {
           const geminiRes = await fetch(
             `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${apiKey}`,
