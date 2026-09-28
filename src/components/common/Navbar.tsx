@@ -51,11 +51,11 @@ export const Navbar: React.FC = () => {
 
   const navLinks = [
     { name: 'Home', path: '/', icon: Home },
-    { name: 'Services', path: '/services', icon: Layers },
+    { name: 'AI Health', path: '/symptom-checker', icon: Sparkles },
     { name: 'Doctors', path: '/doctors', icon: Stethoscope },
-    { name: 'AI Health Guidance', path: '/symptom-checker', icon: Sparkles },
     { name: 'Appointments', path: '/appointments', icon: Calendar },
-    { name: 'Hospitals & Pharmacies', path: '/hospitals', icon: MapPin },
+    { name: 'Services', path: '/services', icon: Layers },
+    { name: 'Emergency', path: '/emergency', icon: ShieldAlert },
   ];
 
   return (

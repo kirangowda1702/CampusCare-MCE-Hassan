@@ -29,22 +29,34 @@ import {
   Eye,
   Info,
   KeyRound,
-  Database
+  Database,
+  Bell,
+  Mic,
+  VideoOff,
+  MicOff,
+  MonitorUp,
+  Radio,
+  Sliders,
+  AlertCircle
 } from 'lucide-react';
-import { Doctor } from '../types';
+import { Doctor, Appointment, Prescription, MedicalRecord } from '../types';
 import { doctorService } from '../services/doctorService';
 import { statsService, PlatformMetrics } from '../services/statsService';
 import { mockDoctors } from '../data/doctors';
 import { CampusMap } from '../components/feedback/CampusMap';
 import { useEmergency } from '../context/EmergencyContext';
 import { useAuth } from '../context/AuthContext';
+import { useAppointments } from '../context/AppointmentContext';
+import { useMedical } from '../context/MedicalContext';
 import { DemoLoginModal } from '../features/auth/DemoLoginModal';
 import { FloatingMedicalAssistant } from '../components/common/FloatingMedicalAssistant';
 
 export const HomePage: React.FC = () => {
   const navigate = useNavigate();
   const { setIsEmergencyModalOpen } = useEmergency();
-  const { role, isAuthenticated } = useAuth();
+  const { user, role, isAuthenticated } = useAuth();
+  const { appointments } = useAppointments();
+  const { prescriptions, records } = useMedical();
   const [isDemoModalOpen, setIsDemoModalOpen] = useState(false);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [heroSymptom, setHeroSymptom] = useState('');
@@ -79,17 +91,22 @@ export const HomePage: React.FC = () => {
   // Up to 4 featured doctors from database / mock fallback
   const featuredDoctors = (doctors.length > 0 ? doctors : mockDoctors).slice(0, 4);
 
+  // User dashboard items or clean realistic empty state
+  const upcomingAppointment: Appointment | undefined = appointments && appointments.length > 0 ? appointments[0] : undefined;
+  const latestPrescription: Prescription | undefined = prescriptions && prescriptions.length > 0 ? prescriptions[0] : undefined;
+  const latestRecord: MedicalRecord | undefined = records && records.length > 0 ? records[0] : undefined;
+
   return (
     <div className="space-y-20 sm:space-y-28 pb-16 overflow-hidden">
       {/* ==================================================
-          ACADEMIC PROJECT & LIVE METRICS NOTICE
+          ACADEMIC PROJECT NOTICE & DEMO SWITCHER
       ================================================== */}
       <div className="bg-amber-50 dark:bg-amber-950/40 border-b border-amber-200/80 dark:border-amber-900/60 py-2.5 px-4">
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-3 text-xs text-amber-900 dark:text-amber-200">
           <div className="flex items-center gap-2">
             <Info className="w-4 h-4 text-amber-600 flex-shrink-0" />
             <span>
-              <strong>CampusCare Telemedicine Platform:</strong> Engineering capstone prototype for Malnad College of Engineering (MCE Hassan). Clinical schedule demo active. For campus emergencies, contact MCE First Aid at <strong>9110885805</strong>.
+              <strong>CampusCare Telemedicine:</strong> Engineering capstone prototype for Malnad College of Engineering (MCE Hassan). Real-time database & AI safety engine active. For campus emergencies, contact MCE First Aid at <strong>9110885805</strong>.
             </span>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
@@ -107,179 +124,187 @@ export const HomePage: React.FC = () => {
       </div>
 
       {/* ==================================================
-          SECTION 2 — IMMERSIVE HERO
+          2. PREMIUM DARK HERO + 3. HERO RIGHT AI HEALTH PANEL
       ================================================== */}
-      <section className="relative pt-6 sm:pt-12 pb-8 sm:pb-16">
-        {/* Subtle Ambient Backdrops */}
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-7xl h-[550px] pointer-events-none -z-10 bg-gradient-to-b from-primary-500/5 via-teal-500/5 to-transparent blur-3xl rounded-full" />
+      <section className="relative bg-[#060d17] text-white pt-10 sm:pt-16 pb-16 sm:pb-24 border-b border-slate-800 overflow-hidden">
+        {/* Subtle Medical Grid Pattern */}
+        <div
+          className="absolute inset-0 opacity-[0.03] pointer-events-none"
+          style={{
+            backgroundImage: `radial-gradient(circle, #38bdf8 1px, transparent 1px)`,
+            backgroundSize: '28px 28px'
+          }}
+        />
 
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        {/* Soft Healthcare Blue Gradient Glow */}
+        <div className="absolute top-1/4 left-1/4 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-primary-600/15 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute bottom-10 right-10 w-[500px] h-[500px] bg-teal-500/10 rounded-full blur-3xl pointer-events-none" />
+
+        {/* Abstract Healthcare Waveform SVG Banner */}
+        <div className="absolute top-0 right-0 w-full lg:w-2/3 h-48 opacity-10 pointer-events-none">
+          <svg viewBox="0 0 1000 200" fill="none" className="w-full h-full stroke-cyan-400 stroke-2">
+            <path d="M0,100 L200,100 L220,60 L240,140 L260,30 L280,170 L300,100 L500,100 L520,70 L540,130 L560,40 L580,160 L600,100 L1000,100" />
+          </svg>
+        </div>
+
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-8 items-center">
-            {/* HERO LEFT */}
+            {/* HERO LEFT SIDE */}
             <motion.div
               initial={{ opacity: 0, y: 18 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.55 }}
+              transition={{ duration: 0.6 }}
               className="lg:col-span-7 space-y-6 text-center lg:text-left"
             >
-              {/* Institutional Badge */}
-              <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#1e3a8a]/10 dark:bg-[#1e3a8a]/30 border border-[#1e3a8a]/20 text-[#1e3a8a] dark:text-blue-300 text-xs font-bold shadow-xs">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                MCE CampusCare • Digital Healthcare
+              {/* Badge */}
+              <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-blue-950/80 border border-blue-800/60 text-blue-300 text-xs font-bold shadow-inner">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                MCE CAMPUSCARE • DIGITAL HEALTHCARE
               </div>
 
-              {/* Headline */}
-              <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-slate-900 dark:text-white leading-[1.12]">
-                Healthcare, Connected <br />
-                <span className="bg-gradient-to-r from-[#1e3a8a] via-primary-600 to-teal-500 bg-clip-text text-transparent">
-                  to Your Campus.
+              {/* Main Headline */}
+              <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-white leading-[1.12]">
+                Your Campus. <br />
+                Your Health. <br />
+                <span className="bg-gradient-to-r from-blue-400 via-teal-300 to-amber-300 bg-clip-text text-transparent">
+                  One Intelligent Platform.
                 </span>
               </h1>
 
               {/* Supporting Text */}
-              <p className="text-base sm:text-lg text-slate-600 dark:text-slate-300 max-w-2xl mx-auto lg:mx-0 leading-relaxed font-normal">
-                AI-assisted health guidance, trusted campus doctors, secure medical records, virtual consultations and emergency support — all in one platform.
+              <p className="text-base sm:text-lg text-slate-300 max-w-2xl mx-auto lg:mx-0 leading-relaxed font-normal">
+                Connect with campus doctors, understand your symptoms with AI-assisted guidance, manage appointments and records, and access emergency support from one secure healthcare platform.
               </p>
 
-              {/* Primary & Secondary Call to Actions */}
+              {/* Action Buttons */}
               <div className="flex flex-wrap items-center justify-center lg:justify-start gap-3.5 pt-2">
                 <Link
                   to="/symptom-checker"
-                  className="px-6 py-3.5 rounded-2xl bg-gradient-to-r from-[#1e3a8a] to-primary-600 hover:from-blue-900 hover:to-primary-700 text-white font-bold text-sm shadow-lg shadow-blue-900/20 hover:shadow-xl hover:scale-[1.01] transition-all flex items-center gap-2"
+                  className="px-6 py-3.5 rounded-2xl bg-gradient-to-r from-[#1e3a8a] to-primary-600 hover:from-blue-800 hover:to-primary-700 text-white font-bold text-sm shadow-lg shadow-blue-950/50 hover:scale-[1.02] transition-all flex items-center gap-2"
                 >
                   <Sparkles className="w-4 h-4 text-amber-300" /> Start AI Health Guidance
                 </Link>
 
                 <Link
                   to="/doctors"
-                  className="px-6 py-3.5 rounded-2xl bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-800 dark:text-white border border-slate-200 dark:border-slate-700 font-bold text-sm shadow-sm transition-all flex items-center gap-2"
+                  className="px-6 py-3.5 rounded-2xl bg-slate-800/90 hover:bg-slate-700/90 text-white border border-slate-700 font-bold text-sm shadow-sm transition-all flex items-center gap-2"
                 >
-                  <Stethoscope className="w-4 h-4 text-teal-500" /> Find a Doctor
+                  <Stethoscope className="w-4 h-4 text-teal-400" /> Find a Doctor
                 </Link>
 
                 <button
                   onClick={() => setIsEmergencyModalOpen(true)}
-                  className="px-5 py-3.5 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-sm shadow-md shadow-rose-600/20 transition-all flex items-center gap-2"
+                  className="px-5 py-3.5 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-sm shadow-lg shadow-rose-900/30 transition-all flex items-center gap-2"
                 >
                   <ShieldAlert className="w-4 h-4 animate-pulse" /> Emergency SOS
                 </button>
               </div>
 
               {/* Trust Indicators */}
-              <div className="pt-4 flex flex-wrap items-center justify-center lg:justify-start gap-4 sm:gap-6 text-xs font-semibold text-slate-600 dark:text-slate-400">
+              <div className="pt-4 flex flex-wrap items-center justify-center lg:justify-start gap-4 sm:gap-6 text-xs font-semibold text-slate-300">
                 <div className="flex items-center gap-1.5">
-                  <ShieldCheck className="w-4 h-4 text-emerald-500" />
-                  <span>Secure</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <Sparkles className="w-4 h-4 text-amber-500" />
+                  <Sparkles className="w-4 h-4 text-amber-400" />
                   <span>AI-Assisted</span>
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <Building2 className="w-4 h-4 text-[#1e3a8a] dark:text-blue-400" />
-                  <span>Campus Healthcare</span>
+                  <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                  <span>Secure Records</span>
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <Video className="w-4 h-4 text-teal-500" />
-                  <span>Real-Time Consultation</span>
+                  <Video className="w-4 h-4 text-teal-400" />
+                  <span>Video Consultation</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <ShieldAlert className="w-4 h-4 text-rose-400" />
+                  <span>Campus Emergency Support</span>
                 </div>
               </div>
             </motion.div>
 
-            {/* HERO RIGHT: Interactive "Campus Health Command Center" visual card */}
+            {/* HERO RIGHT SIDE — 3. AI HEALTH PANEL */}
             <motion.div
               initial={{ opacity: 0, scale: 0.97 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ duration: 0.6, delay: 0.1 }}
               className="lg:col-span-5"
             >
-              <div className="relative rounded-3xl bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border border-slate-200/90 dark:border-slate-800 p-6 sm:p-7 shadow-2xl shadow-blue-900/10 space-y-5">
-                {/* Header inside Command Center card */}
-                <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
+              <div className="relative rounded-3xl bg-slate-900/95 border border-slate-800/90 p-6 sm:p-7 shadow-2xl shadow-black/80 space-y-5 backdrop-blur-xl">
+                {/* Card Title & Pulse */}
+                <div className="flex items-center justify-between border-b border-slate-800 pb-4">
                   <div className="flex items-center gap-3">
                     <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-[#1e3a8a] to-teal-500 text-white flex items-center justify-center shadow-md">
-                      <Sparkles className="w-5 h-5" />
+                      <Sparkles className="w-5 h-5 text-amber-300" />
                     </div>
                     <div>
-                      <h3 className="font-extrabold text-sm text-slate-900 dark:text-white flex items-center gap-1.5">
+                      <h3 className="font-extrabold text-sm text-white flex items-center gap-2">
                         CampusCare AI
-                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
                       </h3>
-                      <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
-                        Smart Health Guidance Assistant
+                      <p className="text-xs text-slate-400 font-medium">
+                        How are you feeling today?
                       </p>
                     </div>
                   </div>
-                  <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-md bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-800">
-                    Live Triage
+                  <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-md bg-teal-950 text-teal-300 border border-teal-800/80">
+                    Real AI Triage
                   </span>
                 </div>
 
-                {/* Symptom Query Prompt */}
-                <div className="space-y-3">
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
-                    How are you feeling today?
-                  </label>
-                  <form onSubmit={handleStartHeroAssessment} className="space-y-3">
-                    <div className="relative">
-                      <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                      <input
-                        type="text"
-                        value={heroSymptom}
-                        onChange={e => setHeroSymptom(e.target.value)}
-                        placeholder="Describe your symptoms (e.g. headache, fever, sore throat)..."
-                        className="w-full pl-10 pr-3.5 py-3 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1e3a8a] dark:focus:ring-primary-500 transition-all"
-                      />
-                    </div>
+                {/* Symptom Input & Form */}
+                <form onSubmit={handleStartHeroAssessment} className="space-y-3.5">
+                  <div className="relative">
+                    <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      value={heroSymptom}
+                      onChange={e => setHeroSymptom(e.target.value)}
+                      placeholder="Describe your symptoms (e.g. headache, fever, fatigue)..."
+                      className="w-full pl-10 pr-3.5 py-3 rounded-2xl bg-slate-800/90 border border-slate-700 text-xs text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all"
+                    />
+                  </div>
 
-                    {/* Quick Symptom Chips */}
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium mr-1">
-                        Quick select:
-                      </span>
-                      {['Headache', 'Fever', 'Cough', 'Stomach Pain'].map(symptom => (
-                        <button
-                          key={symptom}
-                          type="button"
-                          onClick={() => handleQuickChipClick(symptom)}
-                          className="px-2.5 py-1 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-primary-50 dark:hover:bg-primary-950/60 hover:text-primary-600 dark:hover:text-primary-400 text-[11px] font-semibold text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 transition-colors"
-                        >
-                          + {symptom}
-                        </button>
-                      ))}
-                    </div>
+                  {/* Quick Symptom Chips */}
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-[11px] text-slate-400 font-medium mr-1">
+                      Quick select:
+                    </span>
+                    {['Headache', 'Fever', 'Cough', 'Stomach Pain'].map(chip => (
+                      <button
+                        key={chip}
+                        type="button"
+                        onClick={() => handleQuickChipClick(chip)}
+                        className="px-2.5 py-1 rounded-xl bg-slate-800 hover:bg-slate-700 text-[11px] font-semibold text-slate-200 border border-slate-700 hover:border-teal-500 transition-colors"
+                      >
+                        + {chip}
+                      </button>
+                    ))}
+                  </div>
 
-                    <button
-                      type="submit"
-                      className="w-full py-3 rounded-2xl bg-[#1e3a8a] hover:bg-blue-900 text-white font-bold text-xs shadow-md transition-all flex items-center justify-center gap-2"
-                    >
-                      <Sparkles className="w-4 h-4 text-amber-300" /> Start AI Assessment
-                    </button>
-                  </form>
-                </div>
+                  <button
+                    type="submit"
+                    className="w-full py-3 rounded-2xl bg-gradient-to-r from-[#1e3a8a] to-teal-600 hover:from-blue-800 hover:to-teal-500 text-white font-bold text-xs shadow-md transition-all flex items-center justify-center gap-2"
+                  >
+                    <Sparkles className="w-4 h-4 text-amber-300" /> Start AI Assessment
+                  </button>
+                </form>
 
-                {/* Doctor Availability Widget (Uses Real Database Count) */}
-                <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
-                  <div className="flex items-center justify-between p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-xl bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
-                        <Stethoscope className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <div className="text-xs font-bold text-slate-900 dark:text-white">
-                          {metrics.availableDoctors > 0 ? metrics.availableDoctors : doctors.length} Doctors Available
-                        </div>
-                        <div className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">
-                          Active campus medical roster
-                        </div>
-                      </div>
-                    </div>
-                    <Link
-                      to="/doctors"
-                      className="text-xs font-bold text-primary-600 dark:text-primary-400 hover:underline flex items-center gap-1"
-                    >
-                      View Doctors →
-                    </Link>
+                {/* Below Input Capabilities */}
+                <div className="pt-2 border-t border-slate-800 grid grid-cols-2 gap-2 text-[11px]">
+                  <div className="p-2.5 rounded-xl bg-slate-800/50 border border-slate-800 flex items-center gap-2">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-teal-400 flex-shrink-0" />
+                    <span className="text-slate-300">AI Health Guidance</span>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-slate-800/50 border border-slate-800 flex items-center gap-2">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-blue-400 flex-shrink-0" />
+                    <span className="text-slate-300">Follow-up Questions</span>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-slate-800/50 border border-slate-800 flex items-center gap-2">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
+                    <span className="text-slate-300">Red-Flag Screening</span>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-slate-800/50 border border-slate-800 flex items-center gap-2">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
+                    <span className="text-slate-300">Doctor Match</span>
                   </div>
                 </div>
               </div>
@@ -289,193 +314,130 @@ export const HomePage: React.FC = () => {
       </section>
 
       {/* ==================================================
-          SECTION 3 — AI HEALTH GUIDANCE FEATURE (Full Width)
+          4. COMMAND CENTER (Immediately below hero)
       ================================================== */}
-      <section className="bg-gradient-to-b from-slate-100/70 via-slate-50/50 to-white dark:from-slate-900/60 dark:via-slate-900/40 dark:to-slate-950 py-16 sm:py-20 border-y border-slate-200/80 dark:border-slate-800">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-12">
-          {/* Section Header */}
-          <div className="text-center max-w-3xl mx-auto space-y-2">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-teal-50 dark:bg-teal-950/60 border border-teal-200 dark:border-teal-800 text-teal-700 dark:text-teal-300 text-xs font-bold">
-              <Sparkles className="w-3.5 h-3.5" /> Intelligent Clinical Safety Engine
-            </div>
-            <h2 className="text-3xl sm:text-4xl font-extrabold text-slate-900 dark:text-white tracking-tight">
-              AI Health Guidance
-            </h2>
-            <p className="text-sm sm:text-base text-slate-600 dark:text-slate-300">
-              Understand your symptoms before deciding your next step.
-            </p>
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8 -mt-6">
+        <div className="text-center max-w-3xl mx-auto space-y-2">
+          <div className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-[#1e3a8a] dark:text-blue-400">
+            <Activity className="w-3.5 h-3.5" /> University Health Portals
           </div>
+          <h2 className="text-3xl sm:text-4xl font-extrabold text-slate-900 dark:text-white tracking-tight">
+            CAMPUS HEALTH COMMAND CENTER
+          </h2>
+          <p className="text-sm text-slate-600 dark:text-slate-400">
+            Everything you need for your digital healthcare journey.
+          </p>
+        </div>
 
-          {/* Sophisticated AI Interface Preview Grid */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch">
-            {/* LEFT: AI Conversation Preview */}
-            <div className="lg:col-span-6 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 sm:p-7 shadow-xl flex flex-col justify-between space-y-6">
-              <div>
-                <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-xl bg-primary-600 text-white flex items-center justify-center font-bold text-xs">
-                      AI
-                    </div>
-                    <div>
-                      <h4 className="font-bold text-xs text-slate-900 dark:text-white">Conversational Assessment</h4>
-                      <p className="text-[10px] text-slate-400">Interactive Follow-up & Red Flag Screening</p>
-                    </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+          {[
+            {
+              title: 'AI Health Guidance',
+              desc: 'Triage symptoms, screen emergency flags, and receive instant clinical first-steps.',
+              path: '/symptom-checker',
+              icon: Sparkles,
+              iconColor: 'text-amber-500',
+              bgColor: 'bg-amber-50 dark:bg-amber-950/40'
+            },
+            {
+              title: 'Doctors',
+              desc: 'Directory of verified campus physicians, specializations, and availability.',
+              path: '/doctors',
+              icon: Stethoscope,
+              iconColor: 'text-[#1e3a8a] dark:text-blue-400',
+              bgColor: 'bg-blue-50 dark:bg-blue-950/40'
+            },
+            {
+              title: 'Appointments',
+              desc: 'Schedule consultations, check calendar availability, and review visit history.',
+              path: '/appointments',
+              icon: Calendar,
+              iconColor: 'text-teal-600 dark:text-teal-400',
+              bgColor: 'bg-teal-50 dark:bg-teal-950/40'
+            },
+            {
+              title: 'Video Consultation',
+              desc: 'Encrypted peer-to-peer WebRTC consultation room with campus doctors.',
+              path: '/consultation/apt-101',
+              icon: Video,
+              iconColor: 'text-cyan-600 dark:text-cyan-400',
+              bgColor: 'bg-cyan-50 dark:bg-cyan-950/40'
+            },
+            {
+              title: 'Medical Records',
+              desc: 'Confidential digital vault for clinical reports, diagnostic lab tests, and notes.',
+              path: '/medical-records',
+              icon: FileText,
+              iconColor: 'text-indigo-600 dark:text-indigo-400',
+              bgColor: 'bg-indigo-50 dark:bg-indigo-950/40'
+            },
+            {
+              title: 'Prescriptions',
+              desc: 'Access verified electronic doctor prescriptions and download medical slips.',
+              path: '/prescriptions',
+              icon: FileCheck,
+              iconColor: 'text-emerald-600 dark:text-emerald-400',
+              bgColor: 'bg-emerald-50 dark:bg-emerald-950/40'
+            },
+            {
+              title: 'Medicine Reminders',
+              desc: 'Personalized medicine schedule and notification reminders for exam periods.',
+              path: '/medications',
+              icon: Pill,
+              iconColor: 'text-purple-600 dark:text-purple-400',
+              bgColor: 'bg-purple-50 dark:bg-purple-950/40'
+            },
+            {
+              title: 'Emergency SOS',
+              desc: 'Instant 1-click distress trigger notifying MCE First Aid Desk with campus coordinates.',
+              path: '/emergency',
+              icon: ShieldAlert,
+              iconColor: 'text-rose-600 dark:text-rose-400',
+              bgColor: 'bg-rose-50 dark:bg-rose-950/40'
+            }
+          ].map(card => {
+            const Icon = card.icon;
+            return (
+              <Link
+                key={card.title}
+                to={card.path}
+                className="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all flex flex-col justify-between group"
+              >
+                <div>
+                  <div className={`w-12 h-12 rounded-2xl ${card.bgColor} ${card.iconColor} flex items-center justify-center mb-4 group-hover:scale-110 transition-transform`}>
+                    <Icon className="w-6 h-6" />
                   </div>
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300 font-bold border border-blue-200 dark:border-blue-900">
-                    Active Session
-                  </span>
+                  <h3 className="font-bold text-sm text-slate-900 dark:text-white group-hover:text-primary-600 transition-colors">
+                    {card.title}
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed mt-1.5">
+                    {card.desc}
+                  </p>
                 </div>
-
-                {/* Simulated Conversation Flow */}
-                <div className="space-y-4 pt-5 text-xs">
-                  {/* User Bubble */}
-                  <div className="flex justify-end">
-                    <div className="max-w-[85%] bg-primary-600 text-white p-3.5 rounded-2xl rounded-tr-xs shadow-sm font-medium">
-                      "I have a headache since morning with some eye fatigue."
-                    </div>
-                  </div>
-
-                  {/* AI Bubble */}
-                  <div className="flex justify-start">
-                    <div className="max-w-[90%] bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 p-3.5 rounded-2xl rounded-tl-xs space-y-2 border border-slate-200/60 dark:border-slate-700">
-                      <p className="font-semibold text-primary-600 dark:text-primary-400">
-                        CampusCare Medical AI:
-                      </p>
-                      <p className="leading-relaxed">
-                        I can guide you safely through your symptoms. To screen for urgency:
-                      </p>
-                      <ul className="list-disc list-inside space-y-1 text-slate-600 dark:text-slate-300 text-[11px]">
-                        <li>Are you experiencing sudden worst-headache-of-life onset?</li>
-                        <li>Do you have fever, stiff neck, or visual changes?</li>
-                        <li>How much screen time or hydration have you had today?</li>
-                      </ul>
-                    </div>
-                  </div>
+                <div className="pt-4 mt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs font-bold text-primary-600 dark:text-primary-400">
+                  <span>Open Module</span>
+                  <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
                 </div>
-
-                {/* Clinical Parameters Display */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-6">
-                  <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-100 dark:border-slate-700 text-center">
-                    <div className="text-[10px] text-slate-400 font-semibold uppercase">Duration</div>
-                    <div className="text-xs font-bold text-slate-900 dark:text-white mt-0.5">1 Day</div>
-                  </div>
-                  <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-100 dark:border-slate-700 text-center">
-                    <div className="text-[10px] text-slate-400 font-semibold uppercase">Severity</div>
-                    <div className="text-xs font-bold text-amber-600 dark:text-amber-400 mt-0.5">Moderate (4/10)</div>
-                  </div>
-                  <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-100 dark:border-slate-700 text-center">
-                    <div className="text-[10px] text-slate-400 font-semibold uppercase">Red Flags</div>
-                    <div className="text-xs font-bold text-emerald-600 dark:text-emerald-400 mt-0.5">None Detected</div>
-                  </div>
-                  <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-100 dark:border-slate-700 text-center">
-                    <div className="text-[10px] text-slate-400 font-semibold uppercase">Urgency</div>
-                    <div className="text-xs font-bold text-blue-600 dark:text-blue-400 mt-0.5">MODERATE</div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="pt-2">
-                <Link
-                  to="/symptom-checker"
-                  className="w-full py-3 rounded-2xl bg-gradient-to-r from-primary-600 to-teal-600 hover:from-primary-700 hover:to-teal-700 text-white font-bold text-xs shadow-md transition-all flex items-center justify-center gap-2"
-                >
-                  <Sparkles className="w-4 h-4 text-amber-300" /> Open AI Health Guidance
-                </Link>
-              </div>
-            </div>
-
-            {/* RIGHT: Evidence-Grounded Guidance Cards */}
-            <div className="lg:col-span-6 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 sm:p-7 shadow-xl space-y-4 flex flex-col justify-between">
-              <div>
-                <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
-                  <h4 className="font-bold text-xs text-slate-900 dark:text-white uppercase tracking-wider flex items-center gap-1.5">
-                    <FileCheck className="w-4 h-4 text-teal-500" />
-                    Evidence-Grounded Guidance
-                  </h4>
-                  <span className="text-[10px] text-slate-400">Clinical Protocol Format</span>
-                </div>
-
-                <div className="space-y-3 pt-3">
-                  {/* Possible Causes Card */}
-                  <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700 space-y-1">
-                    <div className="text-[11px] font-bold text-[#1e3a8a] dark:text-blue-300 uppercase tracking-wider">
-                      Possible Causes
-                    </div>
-                    <p className="text-xs text-slate-700 dark:text-slate-300 font-medium">
-                      Tension-type Headache • Dehydration • Digital Eye Strain from prolonged screen reading
-                    </p>
-                  </div>
-
-                  {/* Self-Care Card */}
-                  <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700 space-y-1">
-                    <div className="text-[11px] font-bold text-emerald-700 dark:text-emerald-400 uppercase tracking-wider">
-                      Self-Care & Comfort
-                    </div>
-                    <p className="text-xs text-slate-700 dark:text-slate-300 font-medium">
-                      Rest in a quiet, dimmed room. Drink 500ml water immediately. Apply a cool compress to forehead.
-                    </p>
-                  </div>
-
-                  {/* Common OTC Information */}
-                  <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700 space-y-1">
-                    <div className="text-[11px] font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wider">
-                      Common OTC Information
-                    </div>
-                    <p className="text-xs text-slate-700 dark:text-slate-300 font-medium">
-                      Paracetamol / Acetaminophen (per package directions). Always verify with campus clinician if symptoms persist.
-                    </p>
-                  </div>
-
-                  {/* Recommended Specialty & Trusted Sources */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div className="p-3 rounded-2xl bg-blue-50/60 dark:bg-blue-950/40 border border-blue-100 dark:border-blue-900/60">
-                      <div className="text-[10px] font-bold text-blue-700 dark:text-blue-300 uppercase">
-                        Recommended Specialty
-                      </div>
-                      <div className="text-xs font-extrabold text-slate-900 dark:text-white mt-0.5">
-                        General Medicine • MCE Clinic
-                      </div>
-                    </div>
-
-                    <div className="p-3 rounded-2xl bg-teal-50/60 dark:bg-teal-950/40 border border-teal-100 dark:border-teal-900/60">
-                      <div className="text-[10px] font-bold text-teal-700 dark:text-teal-300 uppercase">
-                        Trusted Sources
-                      </div>
-                      <div className="text-xs font-extrabold text-slate-900 dark:text-white mt-0.5 flex items-center gap-2">
-                        <span>MedlinePlus</span>
-                        <span>•</span>
-                        <span>WHO Guidelines</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Disclaimer */}
-              <div className="pt-3 border-t border-slate-100 dark:border-slate-800">
-                <p className="text-[11px] text-slate-500 dark:text-slate-400 italic">
-                  <strong>Disclaimer:</strong> AI guidance is educational and does not replace a medical diagnosis.
-                </p>
-              </div>
-            </div>
-          </div>
+              </Link>
+            );
+          })}
         </div>
       </section>
 
       {/* ==================================================
-          SECTION 4 — CAMPUS DOCTORS
+          5. DOCTOR SHOWCASE
       ================================================== */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
           <div>
             <div className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-[#1e3a8a] dark:text-blue-400">
-              <Stethoscope className="w-3.5 h-3.5" /> Medical Panel & Faculty
+              <Stethoscope className="w-3.5 h-3.5" /> Clinical Faculty
             </div>
             <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white mt-1">
               Meet Your Campus Doctors
             </h2>
             <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 mt-1">
-              Connect with healthcare professionals available through CampusCare.
+              Connect with healthcare professionals through CampusCare.
             </p>
           </div>
 
@@ -487,7 +449,7 @@ export const HomePage: React.FC = () => {
           </Link>
         </div>
 
-        {/* Doctor Cards Grid */}
+        {/* Doctor Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           {featuredDoctors.map(doctor => {
             const isVerified = Boolean(doctor.verified_public_profile || doctor.campuscare_enabled);
@@ -501,7 +463,7 @@ export const HomePage: React.FC = () => {
                 className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/90 dark:border-slate-800 p-5 shadow-sm hover:shadow-xl transition-all flex flex-col justify-between group"
               >
                 <div className="space-y-4">
-                  {/* Doctor Avatar & Status */}
+                  {/* Photo & Status */}
                   <div className="flex items-start gap-3.5">
                     <div className="relative flex-shrink-0">
                       {doctor.image_url ? (
@@ -518,7 +480,7 @@ export const HomePage: React.FC = () => {
                       {isVerified && (
                         <span
                           className="absolute -bottom-1 -right-1 p-0.5 rounded-full bg-teal-500 text-white border-2 border-white dark:border-slate-900"
-                          title="Verified Public Profile in Database"
+                          title="Verified Public Profile"
                         >
                           <ShieldCheck className="w-3 h-3" />
                         </span>
@@ -538,7 +500,7 @@ export const HomePage: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Verification Status Pill (Direct DB Value) */}
+                  {/* Dynamic Database Verification Status */}
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold border ${
                       isVerified
@@ -555,7 +517,7 @@ export const HomePage: React.FC = () => {
                     )}
                   </div>
 
-                  {/* Consultation Fee & Availability */}
+                  {/* Fee & Availability */}
                   <div className="py-2.5 border-y border-slate-100 dark:border-slate-800 space-y-1.5 text-xs">
                     <div className="flex items-center justify-between text-slate-700 dark:text-slate-300">
                       <span className="text-slate-500 dark:text-slate-400 text-[11px]">Consultation Fee:</span>
@@ -573,7 +535,7 @@ export const HomePage: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Actions */}
+                {/* Buttons */}
                 <div className="pt-4 grid grid-cols-2 gap-2">
                   <Link
                     to={`/doctors/${doctor.id}`}
@@ -596,80 +558,55 @@ export const HomePage: React.FC = () => {
       </section>
 
       {/* ==================================================
-          SECTION 5 — SMART HEALTHCARE JOURNEY
+          6. AI + DOCTOR CONNECTION SECTION ("From Symptoms to Care")
       ================================================== */}
-      <section className="bg-slate-900 text-white py-16 sm:py-20 relative overflow-hidden">
-        <div className="absolute inset-0 bg-radial-at-c from-[#1e3a8a]/20 to-transparent pointer-events-none" />
-
+      <section className="bg-gradient-to-b from-slate-900 via-[#0b192c] to-slate-900 text-white py-16 sm:py-20 relative overflow-hidden border-y border-slate-800">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-12 relative z-10">
           <div className="text-center max-w-3xl mx-auto space-y-2">
             <span className="text-xs font-bold uppercase tracking-wider text-teal-400">
-              Coordinated Care Protocol
+              Integrated Triage & Clinical Journey
             </span>
             <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight">
-              Smart Healthcare Journey
+              From Symptoms to Care
             </h2>
             <p className="text-sm text-slate-400">
-              A continuous, frictionless pathway from symptom discovery to post-consultation recovery.
+              An intelligent, continuous care pathway connecting self-assessment to medical follow-up.
             </p>
           </div>
 
-          {/* Desktop Horizontal Journey / Mobile Vertical Timeline */}
-          <div className="grid grid-cols-1 md:grid-cols-6 gap-4 relative">
+          {/* 7-Step Sophisticated Horizontal Timeline on Desktop / Vertical on Mobile */}
+          <div className="grid grid-cols-1 md:grid-cols-7 gap-3 relative">
             {[
-              {
-                step: '01',
-                title: 'Describe Symptoms',
-                desc: 'Input symptoms or select quick clinical indicators in plain language.'
-              },
-              {
-                step: '02',
-                title: 'AI Health Guidance',
-                desc: 'Receive immediate severity triage, red-flag screening, and self-care steps.'
-              },
-              {
-                step: '03',
-                title: 'Choose Doctor',
-                desc: 'Select from verified campus physicians and specialty practitioners.'
-              },
-              {
-                step: '04',
-                title: 'Book Appointment',
-                desc: 'Reserve a convenient slot for in-person or virtual consultation.'
-              },
-              {
-                step: '05',
-                title: 'Video Consultation',
-                desc: 'Engage in private, encrypted peer-to-peer WebRTC video care.'
-              },
-              {
-                step: '06',
-                title: 'Prescription & Records',
-                desc: 'Instant digital prescription stored safely in your health vault with pill reminders.'
-              }
+              { step: '01', title: 'Describe Symptoms', desc: 'User inputs plain-text symptoms or quick clinical chips.' },
+              { step: '02', title: 'AI Health Guidance', desc: 'Automated triage evaluates severity and safe first steps.' },
+              { step: '03', title: 'Recommended Specialty', desc: 'Matches condition with General Medicine, Counseling, etc.' },
+              { step: '04', title: 'Choose Doctor', desc: 'Select from available verified campus physicians.' },
+              { step: '05', title: 'Book Appointment', desc: 'Reserve real-time slots for in-person or video consultations.' },
+              { step: '06', title: 'Video Consultation', desc: 'Encrypted WebRTC consultation room with zero latency.' },
+              { step: '07', title: 'Prescription & Records', desc: 'Signed e-prescriptions synced to medical vault with dose reminders.' }
             ].map((item, idx) => (
               <motion.div
                 key={item.step}
                 initial={{ opacity: 0, y: 15 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
-                transition={{ duration: 0.4, delay: idx * 0.08 }}
-                className="relative p-5 rounded-2xl bg-slate-800/80 border border-slate-700/80 hover:border-teal-500/50 transition-all flex flex-col justify-between space-y-3 group"
+                transition={{ duration: 0.4, delay: idx * 0.06 }}
+                className="p-4 rounded-2xl bg-slate-800/80 border border-slate-700/80 hover:border-teal-400/50 transition-all flex flex-col justify-between space-y-2 group"
               >
                 <div>
                   <div className="flex items-center justify-between">
-                    <span className="text-2xl font-black text-teal-400 font-mono">
+                    <span className="text-xl font-black text-teal-400 font-mono">
                       {item.step}
                     </span>
-                    {idx < 5 && (
-                      <ChevronRight className="w-4 h-4 text-slate-500 hidden md:block group-hover:text-teal-400 group-hover:translate-x-1 transition-all" />
+                    {idx < 6 && (
+                      <ChevronRight className="w-3.5 h-3.5 text-slate-500 hidden md:block group-hover:text-teal-400 group-hover:translate-x-0.5 transition-all" />
                     )}
                   </div>
-                  <h3 className="font-bold text-sm text-white mt-2">{item.title}</h3>
-                  <p className="text-xs text-slate-400 leading-relaxed mt-1">{item.desc}</p>
+                  <h4 className="font-bold text-xs text-white mt-1.5 leading-snug">{item.title}</h4>
+                  <p className="text-[11px] text-slate-400 leading-relaxed mt-1">{item.desc}</p>
                 </div>
-                <div className="w-full h-1 bg-slate-700 rounded-full overflow-hidden">
-                  <div className="w-1/3 h-full bg-gradient-to-r from-teal-400 to-[#1e3a8a] group-hover:w-full transition-all duration-500" />
+                <div className="w-full h-1 bg-slate-700 rounded-full overflow-hidden mt-2">
+                  <div className="w-1/4 h-full bg-gradient-to-r from-teal-400 to-[#1e3a8a] group-hover:w-full transition-all duration-500" />
                 </div>
               </motion.div>
             ))}
@@ -678,141 +615,293 @@ export const HomePage: React.FC = () => {
       </section>
 
       {/* ==================================================
-          SECTION 6 — HEALTHCARE COMMAND CENTER (Dashboard-Style)
+          7. HEALTHCARE DASHBOARD PREVIEW
       ================================================== */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
         <div className="text-center max-w-3xl mx-auto space-y-2">
           <div className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-[#1e3a8a] dark:text-blue-400">
-            <Activity className="w-3.5 h-3.5" /> Direct Clinical Portals
+            <Sliders className="w-3.5 h-3.5" /> Patient Live Console
           </div>
           <h2 className="text-3xl sm:text-4xl font-extrabold text-slate-900 dark:text-white tracking-tight">
-            Your Campus Health Command Center
+            Your Health Command Center
           </h2>
           <p className="text-sm text-slate-600 dark:text-slate-400">
-            One-touch access to all student, faculty, and clinical operations.
+            Live preview of your personal telemetry, active prescriptions, and appointments.
           </p>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-          {[
-            {
-              title: 'AI Guidance',
-              desc: 'Triage symptoms and screen red flags anytime.',
-              path: '/symptom-checker',
-              icon: Sparkles,
-              color: 'text-amber-500',
-              bgColor: 'bg-amber-50 dark:bg-amber-950/40',
-              badge: 'Safe Triage'
-            },
-            {
-              title: 'Doctor Consultation',
-              desc: 'Browse verified campus doctors and book slots.',
-              path: '/doctors',
-              icon: Stethoscope,
-              color: 'text-[#1e3a8a] dark:text-blue-400',
-              bgColor: 'bg-blue-50 dark:bg-blue-950/40',
-              badge: `${metrics.activeDoctors || doctors.length} Doctors`
-            },
-            {
-              title: 'Appointments',
-              desc: 'Review upcoming consultations and past visit history.',
-              path: '/appointments',
-              icon: Calendar,
-              color: 'text-teal-600 dark:text-teal-400',
-              bgColor: 'bg-teal-50 dark:bg-teal-950/40',
-              badge: 'Real-time'
-            },
-            {
-              title: 'Medical Records',
-              desc: 'Encrypted patient records vault and lab reports.',
-              path: '/medical-records',
-              icon: FileText,
-              color: 'text-indigo-600 dark:text-indigo-400',
-              bgColor: 'bg-indigo-50 dark:bg-indigo-950/40',
-              badge: 'Encrypted'
-            },
-            {
-              title: 'Prescriptions',
-              desc: 'Review digital prescriptions issued by campus doctors.',
-              path: '/prescriptions',
-              icon: FileCheck,
-              color: 'text-emerald-600 dark:text-emerald-400',
-              bgColor: 'bg-emerald-50 dark:bg-emerald-950/40',
-              badge: 'Verified Rx'
-            },
-            {
-              title: 'Medicine Reminders',
-              desc: 'Scheduled dose notifications and intake tracker.',
-              path: '/medications',
-              icon: Pill,
-              color: 'text-purple-600 dark:text-purple-400',
-              bgColor: 'bg-purple-50 dark:bg-purple-950/40',
-              badge: 'Active Alarms'
-            },
-            {
-              title: 'Video Consultation',
-              desc: 'Encrypted WebRTC consultation room with your doctor.',
-              path: '/consultation/apt-101',
-              icon: Video,
-              color: 'text-cyan-600 dark:text-cyan-400',
-              bgColor: 'bg-cyan-50 dark:bg-cyan-950/40',
-              badge: 'WebRTC P2P'
-            },
-            {
-              title: 'Emergency Support',
-              desc: 'Immediate dispatch and campus first aid response.',
-              path: '/emergency',
-              icon: ShieldAlert,
-              color: 'text-rose-600 dark:text-rose-400',
-              bgColor: 'bg-rose-50 dark:bg-rose-950/40',
-              badge: '9110885805'
-            }
-          ].map(card => {
-            const Icon = card.icon;
-            return (
+        {/* Large Dark Premium Dashboard Mockup */}
+        <div className="rounded-3xl bg-[#0b192c] border border-slate-800 p-6 sm:p-8 text-white shadow-2xl space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-5">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-primary-600/30 border border-primary-500/40 text-primary-400 flex items-center justify-center font-bold">
+                {user?.fullName ? user.fullName.charAt(0) : 'U'}
+              </div>
+              <div>
+                <h3 className="font-bold text-sm text-white flex items-center gap-2">
+                  {user?.fullName || 'Active Campus Resident'}
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800">
+                    {isAuthenticated ? 'Authenticated Session' : 'Guest Portal View'}
+                  </span>
+                </h3>
+                <p className="text-xs text-slate-400">Malnad College of Engineering Health Center</p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
               <Link
-                key={card.title}
-                to={card.path}
-                className="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all flex flex-col justify-between group"
+                to={role ? `/${role}/dashboard` : '/login'}
+                className="px-4 py-2 rounded-xl bg-primary-600 hover:bg-primary-700 text-white font-bold text-xs shadow transition-colors"
               >
-                <div>
-                  <div className="flex items-center justify-between mb-3">
-                    <div className={`w-11 h-11 rounded-2xl ${card.bgColor} ${card.color} flex items-center justify-center group-hover:scale-105 transition-transform`}>
-                      <Icon className="w-5 h-5" />
-                    </div>
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
-                      {card.badge}
-                    </span>
-                  </div>
-                  <h3 className="font-bold text-sm text-slate-900 dark:text-white group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors">
-                    {card.title}
-                  </h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed mt-1">
-                    {card.desc}
-                  </p>
-                </div>
-                <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs font-bold text-primary-600 dark:text-primary-400">
-                  <span>Open Portal</span>
-                  <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
-                </div>
+                Launch Full Dashboard →
               </Link>
-            );
-          })}
+            </div>
+          </div>
+
+          {/* Realistic Dashboard Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+            {/* Upcoming Appointment */}
+            <div className="p-5 rounded-2xl bg-slate-900/90 border border-slate-800 space-y-3">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-bold text-slate-300 flex items-center gap-1.5">
+                  <Calendar className="w-4 h-4 text-primary-400" /> Upcoming Appointment
+                </span>
+                <span className="text-[10px] px-2 py-0.5 rounded bg-primary-950 text-primary-300 border border-primary-800">
+                  {upcomingAppointment ? 'Confirmed' : 'Live State'}
+                </span>
+              </div>
+              {upcomingAppointment ? (
+                <div className="space-y-1.5 text-xs pt-1">
+                  <div className="font-bold text-white text-sm">{upcomingAppointment.doctorName}</div>
+                  <div className="text-slate-400">{upcomingAppointment.doctorSpecialization}</div>
+                  <div className="text-teal-400 font-mono text-[11px] pt-1">
+                    {upcomingAppointment.appointmentDate} • {upcomingAppointment.timeSlot}
+                  </div>
+                </div>
+              ) : (
+                <div className="py-4 text-center space-y-1.5">
+                  <p className="text-xs text-slate-400">No upcoming appointments</p>
+                  <Link to="/appointments/book" className="text-xs font-bold text-primary-400 hover:underline inline-block">
+                    Book a consultation slot →
+                  </Link>
+                </div>
+              )}
+            </div>
+
+            {/* AI Health Guidance */}
+            <div className="p-5 rounded-2xl bg-slate-900/90 border border-slate-800 space-y-3">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-bold text-slate-300 flex items-center gap-1.5">
+                  <Sparkles className="w-4 h-4 text-amber-400" /> AI Health Guidance
+                </span>
+                <span className="text-[10px] px-2 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-800">
+                  Active Triage
+                </span>
+              </div>
+              <div className="space-y-1.5 text-xs pt-1">
+                <div className="font-bold text-white text-sm">Recent Symptom Assessment</div>
+                <div className="text-slate-400">Automated triage engine ready to evaluate vitals and red flags.</div>
+                <Link to="/symptom-checker" className="text-xs font-bold text-amber-400 hover:underline block pt-1">
+                  Run New Symptom Check →
+                </Link>
+              </div>
+            </div>
+
+            {/* Medical Records */}
+            <div className="p-5 rounded-2xl bg-slate-900/90 border border-slate-800 space-y-3">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-bold text-slate-300 flex items-center gap-1.5">
+                  <FileText className="w-4 h-4 text-indigo-400" /> Medical Records
+                </span>
+                <span className="text-[10px] px-2 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-800">
+                  Encrypted
+                </span>
+              </div>
+              {latestRecord ? (
+                <div className="space-y-1 text-xs pt-1">
+                  <div className="font-bold text-white text-sm truncate">{latestRecord.title}</div>
+                  <div className="text-slate-400">{latestRecord.doctorOrLabName}</div>
+                  <div className="text-indigo-400 text-[11px] pt-1">{latestRecord.recordDate}</div>
+                </div>
+              ) : (
+                <div className="py-4 text-center space-y-1.5">
+                  <p className="text-xs text-slate-400">No medical records stored yet</p>
+                  <Link to="/medical-records" className="text-xs font-bold text-indigo-400 hover:underline inline-block">
+                    Open Records Vault →
+                  </Link>
+                </div>
+              )}
+            </div>
+
+            {/* Prescription */}
+            <div className="p-5 rounded-2xl bg-slate-900/90 border border-slate-800 space-y-3">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-bold text-slate-300 flex items-center gap-1.5">
+                  <FileCheck className="w-4 h-4 text-emerald-400" /> Prescription
+                </span>
+                <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800">
+                  Rx Active
+                </span>
+              </div>
+              {latestPrescription ? (
+                <div className="space-y-1 text-xs pt-1">
+                  <div className="font-bold text-white text-sm">Code: {latestPrescription.prescriptionCode}</div>
+                  <div className="text-slate-400">{latestPrescription.doctorName}</div>
+                  <div className="text-emerald-400 text-[11px] pt-1">{latestPrescription.diagnosis}</div>
+                </div>
+              ) : (
+                <div className="py-4 text-center space-y-1.5">
+                  <p className="text-xs text-slate-400">No active prescriptions</p>
+                  <Link to="/prescriptions" className="text-xs font-bold text-emerald-400 hover:underline inline-block">
+                    View Prescriptions →
+                  </Link>
+                </div>
+              )}
+            </div>
+
+            {/* Emergency SOS Ready */}
+            <div className="p-5 rounded-2xl bg-rose-950/40 border border-rose-900/60 space-y-3 md:col-span-2">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-bold text-rose-300 flex items-center gap-1.5">
+                  <ShieldAlert className="w-4 h-4 text-rose-400" /> Emergency
+                </span>
+                <span className="text-[10px] px-2 py-0.5 rounded bg-rose-950 text-rose-300 border border-rose-800">
+                  SOS Ready
+                </span>
+              </div>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
+                <div>
+                  <div className="font-bold text-white text-sm">MCE First Aid Desk: 9110885805</div>
+                  <div className="text-xs text-slate-300 mt-0.5">Campus Geofence Active (MCE Salagame Road)</div>
+                </div>
+                <button
+                  onClick={() => setIsEmergencyModalOpen(true)}
+                  className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-md transition-colors"
+                >
+                  Trigger SOS
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 
       {/* ==================================================
-          SECTION 7 — EMERGENCY SUPPORT
+          8. VIDEO CONSULTATION
       ================================================== */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="rounded-3xl bg-gradient-to-br from-rose-950/90 via-slate-900 to-slate-950 border border-rose-600/30 p-8 sm:p-12 text-white shadow-2xl relative overflow-hidden">
-          {/* Subtle Emergency Flare */}
-          <div className="absolute -top-12 -right-12 w-64 h-64 bg-rose-600/20 rounded-full blur-3xl pointer-events-none" />
+        <div className="rounded-3xl bg-slate-900 text-white p-8 sm:p-12 border border-slate-800 shadow-2xl grid grid-cols-1 lg:grid-cols-12 gap-10 items-center">
+          <div className="lg:col-span-6 space-y-5">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-teal-950 text-teal-300 text-xs font-bold border border-teal-800">
+              <Video className="w-3.5 h-3.5" /> Peer-to-Peer Telemedicine
+            </div>
+
+            <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight">
+              Consult Without Leaving Campus
+            </h2>
+
+            <p className="text-sm sm:text-base text-slate-300 leading-relaxed">
+              Connect directly with verified campus practitioners over encrypted WebRTC video rooms without leaving your hostel room or classroom.
+            </p>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 pt-2 text-xs">
+              <div className="p-3 rounded-2xl bg-slate-800/80 border border-slate-700 space-y-1">
+                <Video className="w-4 h-4 text-teal-400" />
+                <div className="font-bold text-white">HD Video</div>
+                <div className="text-[11px] text-slate-400">Low-latency stream</div>
+              </div>
+              <div className="p-3 rounded-2xl bg-slate-800/80 border border-slate-700 space-y-1">
+                <Mic className="w-4 h-4 text-teal-400" />
+                <div className="font-bold text-white">Audio Controls</div>
+                <div className="text-[11px] text-slate-400">Crystal clear VoIP</div>
+              </div>
+              <div className="p-3 rounded-2xl bg-slate-800/80 border border-slate-700 space-y-1">
+                <MonitorUp className="w-4 h-4 text-teal-400" />
+                <div className="font-bold text-white">Screen Sharing</div>
+                <div className="text-[11px] text-slate-400">Share report files</div>
+              </div>
+              <div className="p-3 rounded-2xl bg-slate-800/80 border border-slate-700 space-y-1">
+                <Lock className="w-4 h-4 text-teal-400" />
+                <div className="font-bold text-white">Secure Room</div>
+                <div className="text-[11px] text-slate-400">Encrypted P2P</div>
+              </div>
+              <div className="p-3 rounded-2xl bg-slate-800/80 border border-slate-700 space-y-1">
+                <VideoOff className="w-4 h-4 text-teal-400" />
+                <div className="font-bold text-white">Camera Toggle</div>
+                <div className="text-[11px] text-slate-400">Privacy controls</div>
+              </div>
+              <div className="p-3 rounded-2xl bg-slate-800/80 border border-slate-700 space-y-1">
+                <MicOff className="w-4 h-4 text-teal-400" />
+                <div className="font-bold text-white">Mute Controls</div>
+                <div className="text-[11px] text-slate-400">One-touch mute</div>
+              </div>
+            </div>
+
+            <div className="pt-2">
+              <Link
+                to="/consultation/apt-101"
+                className="px-6 py-3.5 rounded-2xl bg-teal-500 hover:bg-teal-600 text-slate-950 font-extrabold text-xs shadow-lg inline-flex items-center gap-2 transition-all hover:scale-105"
+              >
+                <Video className="w-4 h-4" /> Explore Video Consultation
+              </Link>
+            </div>
+          </div>
+
+          {/* Consultation Visual Mockup (Doctor & Patient) */}
+          <div className="lg:col-span-6">
+            <div className="relative rounded-3xl bg-slate-950 border border-slate-800 p-5 shadow-2xl space-y-4">
+              <div className="aspect-video rounded-2xl bg-slate-900 border border-slate-800 relative overflow-hidden flex items-center justify-center">
+                <img
+                  src="https://images.unsplash.com/photo-1559839734-2b71ea197ec2?auto=format&fit=crop&q=80&w=800"
+                  alt="Doctor Video Consultation"
+                  className="w-full h-full object-cover opacity-85"
+                />
+                <div className="absolute top-3 left-3 px-2.5 py-1 rounded-lg bg-black/60 backdrop-blur-md text-[11px] font-bold text-emerald-400 flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" /> Live Doctor Feed
+                </div>
+
+                {/* Patient PiP */}
+                <div className="absolute bottom-3 right-3 w-32 h-24 rounded-xl bg-slate-800 border-2 border-slate-700 overflow-hidden shadow-lg flex items-center justify-center">
+                  <div className="text-center p-2">
+                    <div className="w-7 h-7 rounded-full bg-primary-600 text-white font-bold text-xs mx-auto flex items-center justify-center">
+                      U
+                    </div>
+                    <span className="text-[9px] text-slate-300 font-bold block mt-1">You (Patient)</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Consultation Control Bar */}
+              <div className="flex items-center justify-center gap-3 pt-1">
+                <span className="p-2.5 rounded-xl bg-slate-800 text-white text-xs hover:bg-slate-700 cursor-pointer">
+                  <Mic className="w-4 h-4" />
+                </span>
+                <span className="p-2.5 rounded-xl bg-slate-800 text-white text-xs hover:bg-slate-700 cursor-pointer">
+                  <Video className="w-4 h-4" />
+                </span>
+                <span className="p-2.5 rounded-xl bg-slate-800 text-white text-xs hover:bg-slate-700 cursor-pointer">
+                  <MonitorUp className="w-4 h-4" />
+                </span>
+                <span className="px-4 py-2 rounded-xl bg-rose-600 text-white text-xs font-bold hover:bg-rose-700 cursor-pointer">
+                  End Call
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ==================================================
+          9. EMERGENCY SECTION
+      ================================================== */}
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="rounded-3xl bg-gradient-to-br from-rose-950 via-[#060d17] to-[#0b192c] border border-rose-600/40 p-8 sm:p-12 text-white shadow-2xl relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-80 h-80 bg-rose-600/10 rounded-full blur-3xl pointer-events-none" />
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center relative z-10">
             <div className="lg:col-span-8 space-y-4">
               <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-rose-500/20 text-rose-300 text-xs font-bold border border-rose-500/30">
-                <ShieldAlert className="w-3.5 h-3.5 animate-pulse" /> Urgent Medical Response
+                <ShieldAlert className="w-3.5 h-3.5 animate-pulse" /> Realtime Incident Protocol
               </div>
 
               <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight">
@@ -820,10 +909,10 @@ export const HomePage: React.FC = () => {
               </h2>
 
               <p className="text-sm sm:text-base text-slate-300 max-w-2xl leading-relaxed">
-                Get immediate assistance from the MCE First Aid workflow. Fast-track dispatch, GPS geofencing, and real-time first responder incident status tracking.
+                When immediate campus assistance is needed. Instant incident alert dispatch, campus responder tracking, and direct telephone line to MCE First Aid.
               </p>
 
-              {/* Status features list */}
+              {/* Status parameters */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
                 <div className="p-3 rounded-2xl bg-white/5 border border-white/10 text-xs">
                   <div className="text-[10px] text-slate-400 font-semibold uppercase">GPS Location</div>
@@ -831,15 +920,15 @@ export const HomePage: React.FC = () => {
                 </div>
                 <div className="p-3 rounded-2xl bg-white/5 border border-white/10 text-xs">
                   <div className="text-[10px] text-slate-400 font-semibold uppercase">Emergency SOS</div>
-                  <div className="font-bold text-rose-400 mt-0.5">Instant Alert Button</div>
+                  <div className="font-bold text-rose-400 mt-0.5">1-Touch Alert</div>
                 </div>
                 <div className="p-3 rounded-2xl bg-white/5 border border-white/10 text-xs">
                   <div className="text-[10px] text-slate-400 font-semibold uppercase">First Aid Desk</div>
-                  <div className="font-bold text-white mt-0.5">MCE Campus Center</div>
+                  <div className="font-bold text-white mt-0.5">MCE Center</div>
                 </div>
                 <div className="p-3 rounded-2xl bg-white/5 border border-white/10 text-xs">
-                  <div className="text-[10px] text-slate-400 font-semibold uppercase">Incident Status</div>
-                  <div className="font-bold text-emerald-400 mt-0.5">Realtime Tracking</div>
+                  <div className="text-[10px] text-slate-400 font-semibold uppercase">Incident Tracking</div>
+                  <div className="font-bold text-emerald-400 mt-0.5">Live Dispatch</div>
                 </div>
               </div>
             </div>
@@ -847,14 +936,14 @@ export const HomePage: React.FC = () => {
             <div className="lg:col-span-4 flex flex-col gap-3.5">
               <button
                 onClick={() => setIsEmergencyModalOpen(true)}
-                className="w-full py-4 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-sm shadow-xl shadow-rose-600/30 flex items-center justify-center gap-2 hover:scale-[1.02] transition-all"
+                className="w-full py-4 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-sm shadow-xl shadow-rose-900/50 flex items-center justify-center gap-2 hover:scale-[1.02] transition-all"
               >
                 <ShieldAlert className="w-5 h-5 animate-pulse" /> Activate Emergency SOS
               </button>
 
               <div className="p-4 rounded-2xl bg-white/5 border border-white/10 text-center space-y-1">
                 <div className="text-xs font-semibold text-slate-300">
-                  Direct Campus First Aid Desk:
+                  Contact: MCE First Aid
                 </div>
                 <a
                   href="tel:9110885805"
@@ -863,7 +952,7 @@ export const HomePage: React.FC = () => {
                   <Phone className="w-5 h-5" /> 9110885805
                 </a>
                 <p className="text-[10px] text-slate-400">
-                  Dedicated MCE First Aid Protocol
+                  Dedicated Campus Ambulance & Triage
                 </p>
               </div>
             </div>
@@ -872,143 +961,19 @@ export const HomePage: React.FC = () => {
       </section>
 
       {/* ==================================================
-          SECTION 8 — HEALTHCARE SERVICES & HASSAN LOCALITY
-      ================================================== */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-10">
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
-          <div>
-            <div className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-[#1e3a8a] dark:text-blue-400">
-              <Layers className="w-3.5 h-3.5" /> Clinical Services
-            </div>
-            <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white mt-1">
-              Comprehensive Campus Healthcare Services
-            </h2>
-            <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 mt-1">
-              Full spectrum clinical support, student wellness, and local healthcare mapping.
-            </p>
-          </div>
-
-          <Link
-            to="/services"
-            className="text-xs font-bold text-[#1e3a8a] dark:text-blue-400 hover:underline flex items-center gap-1"
-          >
-            Explore All Services →
-          </Link>
-        </div>
-
-        {/* 9 Interactive Services Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-          {[
-            {
-              name: 'AI Health Guidance',
-              desc: 'Automated triage screening symptoms and providing safe clinical first-step advice.',
-              path: '/symptom-checker',
-              icon: Sparkles
-            },
-            {
-              name: 'Doctor Consultation',
-              desc: 'Book one-on-one appointments with verified MCE doctors across clinical departments.',
-              path: '/doctors',
-              icon: Stethoscope
-            },
-            {
-              name: 'Video Consultation',
-              desc: 'Private WebRTC video calls with zero latency and peer-to-peer data protection.',
-              path: '/consultation/apt-101',
-              icon: Video
-            },
-            {
-              name: 'Medical Records',
-              desc: 'Secure digital repository for patient lab results, medical history, and clinical notes.',
-              path: '/medical-records',
-              icon: FileText
-            },
-            {
-              name: 'Prescriptions',
-              desc: 'Doctor-signed electronic prescriptions downloadable anytime as verified records.',
-              path: '/prescriptions',
-              icon: FileCheck
-            },
-            {
-              name: 'Medicine Reminders',
-              desc: 'Automated dosage scheduling preventing missed medication times during exam cycles.',
-              path: '/medications',
-              icon: Pill
-            },
-            {
-              name: 'Hospitals',
-              desc: 'Directory and live map coordinates of Hassan referral facilities and government centers.',
-              path: '/hospitals',
-              icon: Building2
-            },
-            {
-              name: 'Pharmacies',
-              desc: 'Nearby licensed pharmacies in Hassan with operating hours and campus proximity.',
-              path: '/pharmacies',
-              icon: MapPin
-            },
-            {
-              name: 'Emergency Support',
-              desc: 'Direct line to MCE First Aid Desk with one-click SOS alarm dispatch.',
-              path: '/emergency',
-              icon: ShieldAlert
-            }
-          ].map(svc => {
-            const Icon = svc.icon;
-            return (
-              <Link
-                key={svc.name}
-                to={svc.path}
-                className="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all group flex flex-col justify-between"
-              >
-                <div>
-                  <div className="w-10 h-10 rounded-2xl bg-primary-50 dark:bg-primary-950/60 text-primary-600 dark:text-primary-400 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-                    <Icon className="w-5 h-5" />
-                  </div>
-                  <h3 className="font-bold text-sm text-slate-900 dark:text-white group-hover:text-primary-600 transition-colors">
-                    {svc.name}
-                  </h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed mt-1.5">
-                    {svc.desc}
-                  </p>
-                </div>
-                <div className="pt-3 mt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs font-semibold text-primary-600 dark:text-primary-400">
-                  <span>Access Service</span>
-                  <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
-                </div>
-              </Link>
-            );
-          })}
-        </div>
-
-        {/* Hassan Locality & Campus Map */}
-        <div className="pt-6">
-          <div className="text-center max-w-2xl mx-auto mb-6">
-            <span className="text-xs font-bold uppercase tracking-wider text-[#1e3a8a] dark:text-blue-400">
-              OpenStreetMap Geographic Grid
-            </span>
-            <h3 className="text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-white mt-1">
-              Hassan Campus & Locality Health Map
-            </h3>
-          </div>
-          <CampusMap />
-        </div>
-      </section>
-
-      {/* ==================================================
-          SECTION 9 — TRUST & SECURITY
+          10. TRUST & SECURITY
       ================================================== */}
       <section className="bg-slate-50 dark:bg-slate-900/60 py-16 sm:py-20 border-y border-slate-200/80 dark:border-slate-800">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-10">
           <div className="text-center max-w-3xl mx-auto space-y-2">
             <div className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
-              <ShieldCheck className="w-3.5 h-3.5" /> Data Protection Architecture
+              <ShieldCheck className="w-3.5 h-3.5" /> Architecture & Data Protection
             </div>
             <h2 className="text-3xl sm:text-4xl font-extrabold text-slate-900 dark:text-white tracking-tight">
               Your Health Data. Protected.
             </h2>
             <p className="text-sm text-slate-600 dark:text-slate-400">
-              Built with privacy-first engineering, strict data isolation, and auditable authorization boundaries.
+              Built on auditable authentication barriers, strict role checks, and database security.
             </p>
           </div>
 
@@ -1016,33 +981,33 @@ export const HomePage: React.FC = () => {
             {[
               {
                 title: 'Secure Authentication',
-                desc: 'Protected session tokens, password hashing, and role checks on all protected API routes.',
+                desc: 'Token-based sessions with hashed passwords safeguarding student and faculty identity.',
                 icon: KeyRound
               },
               {
                 title: 'Role-Based Access',
-                desc: 'Strict role segregation for Students, Faculty, Doctors, and Administrators with isolated interfaces.',
+                desc: 'Strict role barriers isolating Student, Doctor, Faculty, and Admin interfaces.',
                 icon: UserCheck
               },
               {
                 title: 'Protected Medical Records',
-                desc: 'Confidential e-vault accessible only to the authenticated patient and their attending clinician.',
+                desc: 'Encrypted e-vault accessible only to the authenticated patient and attending clinician.',
                 icon: Lock
               },
               {
                 title: 'Private Consultations',
-                desc: 'Encrypted peer-to-peer WebRTC channels without server-side audio/video recording.',
+                desc: 'Zero server-side recording on peer-to-peer WebRTC video consultation sessions.',
                 icon: Video
               },
               {
-                title: 'Supabase RLS',
-                desc: 'PostgreSQL Row-Level Security ensuring zero unauthorized cross-tenant data access.',
-                icon: Database
+                title: 'Realtime Notifications',
+                desc: 'Immediate dispatch and appointment status updates over encrypted socket channels.',
+                icon: Bell
               },
               {
-                title: 'Secure Data Handling',
-                desc: 'Environment-isolated serverless backend with secret credentials never exposed in the browser.',
-                icon: ShieldCheck
+                title: 'Database Security',
+                desc: 'Supabase PostgreSQL Row-Level Security ensuring strict isolation of clinical records.',
+                icon: Database
               }
             ].map(sec => {
               const Icon = sec.icon;
@@ -1066,18 +1031,18 @@ export const HomePage: React.FC = () => {
       </section>
 
       {/* ==================================================
-          SECTION 10 — TRUSTED MEDICAL INFORMATION
+          11. TRUSTED HEALTH INFORMATION
       ================================================== */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
         <div className="text-center max-w-3xl mx-auto space-y-2">
           <div className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-[#1e3a8a] dark:text-blue-400">
-            <FileCheck className="w-3.5 h-3.5" /> Authoritative Clinical Literature
+            <FileCheck className="w-3.5 h-3.5" /> Clinical Grounding
           </div>
           <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
-            Trusted Health Information
+            Evidence-Grounded Health Guidance
           </h2>
-          <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400">
-            CampusCare AI guidance grounds symptom triage in globally recognized medical references.
+          <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 max-w-2xl mx-auto leading-relaxed">
+            CampusCare AI uses trusted medical information sources where available to provide educational health guidance.
           </p>
         </div>
 
@@ -1087,7 +1052,7 @@ export const HomePage: React.FC = () => {
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-extrabold uppercase tracking-wider text-primary-600 dark:text-primary-400">
-                  National Institutes of Health (NIH)
+                  U.S. National Library of Medicine
                 </span>
                 <span className="text-[10px] px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-bold">
                   Clinical Evidence
@@ -1095,16 +1060,16 @@ export const HomePage: React.FC = () => {
               </div>
               <h3 className="text-lg font-bold text-slate-900 dark:text-white">MedlinePlus</h3>
               <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                Curated clinical knowledge base from the U.S. National Library of Medicine providing authoritative insights on symptoms, over-the-counter precautions, and diseases.
+                Authoritative clinical information on diseases, symptoms, wellness, and prescription drugs curated by medical professionals.
               </p>
             </div>
             <a
               href="https://medlineplus.gov/"
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 text-xs font-bold text-primary-600 dark:text-primary-400 hover:underline pt-2"
+              className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-primary-50 dark:bg-primary-950/60 hover:bg-primary-100 text-primary-700 dark:text-primary-300 text-xs font-bold transition-colors"
             >
-              Visit MedlinePlus Reference Grid <ExternalLink className="w-3.5 h-3.5" />
+              Open MedlinePlus <ExternalLink className="w-3.5 h-3.5" />
             </a>
           </div>
 
@@ -1121,32 +1086,45 @@ export const HomePage: React.FC = () => {
               </div>
               <h3 className="text-lg font-bold text-slate-900 dark:text-white">World Health Organization (WHO)</h3>
               <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                Global health guidelines, disease prevention standards, pandemic alerts, and international health recommendations referenced in campus triage algorithms.
+                Global clinical guidelines, international health standards, pandemic surveillance, and evidence-grounded health protocols.
               </p>
             </div>
             <a
               href="https://www.who.int/"
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 text-xs font-bold text-teal-600 dark:text-teal-400 hover:underline pt-2"
+              className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-teal-50 dark:bg-teal-950/60 hover:bg-teal-100 text-teal-700 dark:text-teal-300 text-xs font-bold transition-colors"
             >
-              Visit World Health Organization <ExternalLink className="w-3.5 h-3.5" />
+              Open WHO <ExternalLink className="w-3.5 h-3.5" />
             </a>
           </div>
         </div>
       </section>
 
+      {/* Hassan Locality & Campus Map */}
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
+        <div className="text-center max-w-2xl mx-auto">
+          <span className="text-xs font-bold uppercase tracking-wider text-[#1e3a8a] dark:text-blue-400">
+            OpenStreetMap Hassan Grid
+          </span>
+          <h3 className="text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-white mt-1">
+            Hassan Locality & Campus Health Map
+          </h3>
+        </div>
+        <CampusMap />
+      </section>
+
       {/* ==================================================
-          SECTION 11 — FINAL CTA
+          12. FINAL PREMIUM CTA
       ================================================== */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="rounded-3xl bg-gradient-to-r from-[#1e3a8a] via-primary-700 to-teal-700 p-8 sm:p-14 text-white shadow-2xl relative overflow-hidden text-center space-y-6">
           <div className="max-w-2xl mx-auto space-y-3">
             <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight">
-              Take the next step toward better campus healthcare.
+              Take Control of Your Campus Healthcare
             </h2>
             <p className="text-sm sm:text-base text-blue-100 leading-relaxed">
-              Join students and faculty across Malnad College of Engineering in receiving safe health guidance, booking verified appointments, and protecting your health records.
+              From symptom guidance to doctor consultation, CampusCare brings your healthcare journey together.
             </p>
           </div>
 

@@ -50,48 +50,46 @@ export const Footer: React.FC = () => {
             </div>
           </div>
 
-          {/* Quick Navigation Links */}
+          {/* Platform Links */}
           <div className="space-y-3 text-xs">
-            <h4 className="font-bold text-white uppercase tracking-wider text-[11px]">Navigation</h4>
+            <h4 className="font-bold text-white uppercase tracking-wider text-[11px]">Platform</h4>
             <ul className="space-y-2 text-slate-400 font-medium">
-              <li><Link to="/" className="hover:text-primary-400 transition-colors">Home</Link></li>
-              <li><Link to="/services" className="hover:text-primary-400 transition-colors">Healthcare Services</Link></li>
+              <li><Link to="/symptom-checker" className="hover:text-primary-400 transition-colors">AI Health</Link></li>
               <li><Link to="/doctors" className="hover:text-primary-400 transition-colors">Doctors</Link></li>
-              <li><Link to="/symptom-checker" className="hover:text-primary-400 transition-colors">AI Guidance</Link></li>
               <li><Link to="/appointments" className="hover:text-primary-400 transition-colors">Appointments</Link></li>
-              <li><Link to="/emergency" className="hover:text-rose-400 transition-colors flex items-center gap-1">Emergency <ShieldAlert className="w-3 h-3 text-rose-500" /></Link></li>
+              <li><Link to="/consultation/apt-101" className="hover:text-primary-400 transition-colors">Video Consultation</Link></li>
+              <li><Link to="/medical-records" className="hover:text-primary-400 transition-colors">Medical Records</Link></li>
             </ul>
           </div>
 
-          {/* Healthcare Services */}
+          {/* Healthcare Links */}
           <div className="space-y-3 text-xs">
-            <h4 className="font-bold text-white uppercase tracking-wider text-[11px]">Healthcare Services</h4>
+            <h4 className="font-bold text-white uppercase tracking-wider text-[11px]">Healthcare</h4>
             <ul className="space-y-2 text-slate-400 font-medium">
-              <li><Link to="/symptom-checker" className="hover:text-primary-400 transition-colors">AI Health Guidance</Link></li>
-              <li><Link to="/doctors" className="hover:text-primary-400 transition-colors">Doctor Consultations</Link></li>
-              <li><Link to="/appointments/book" className="hover:text-primary-400 transition-colors">Video Consultations</Link></li>
-              <li><Link to="/medical-records" className="hover:text-primary-400 transition-colors">Medical Records Vault</Link></li>
-              <li><Link to="/prescriptions" className="hover:text-primary-400 transition-colors">Prescriptions</Link></li>
-              <li><Link to="/medications" className="hover:text-primary-400 transition-colors">Medicine Reminders</Link></li>
-              <li><Link to="/hospitals" className="hover:text-primary-400 transition-colors">Hospitals & Pharmacies</Link></li>
+              <li><Link to="/hospitals" className="hover:text-primary-400 transition-colors">Hospitals</Link></li>
+              <li><Link to="/pharmacies" className="hover:text-primary-400 transition-colors">Pharmacies</Link></li>
+              <li><Link to="/emergency" className="hover:text-rose-400 transition-colors flex items-center gap-1">Emergency <ShieldAlert className="w-3 h-3 text-rose-500" /></Link></li>
+              <li><Link to="/services" className="hover:text-primary-400 transition-colors">Clinical Services</Link></li>
             </ul>
           </div>
 
-          {/* Campus Center & Institutional Trust */}
+          {/* Contact */}
           <div className="space-y-3 text-xs">
-            <h4 className="font-bold text-white uppercase tracking-wider text-[11px]">Campus Facility</h4>
+            <h4 className="font-bold text-white uppercase tracking-wider text-[11px]">Contact</h4>
             <div className="space-y-2.5 text-slate-400">
-              <p className="flex items-start gap-1.5">
-                <MapPin className="w-4 h-4 text-primary-400 flex-shrink-0 mt-0.5" />
-                MCE Health Centre, Salagame Road, Hassan, Karnataka - 573202
+              <div className="p-3 rounded-xl bg-slate-800/80 border border-slate-700 space-y-1">
+                <div className="font-bold text-white">MCE First Aid</div>
+                <a href="tel:9110885805" className="text-rose-400 font-bold font-mono text-sm hover:underline block">
+                  9110885805
+                </a>
+              </div>
+              <p className="flex items-start gap-1.5 text-slate-400 text-[11px]">
+                <MapPin className="w-3.5 h-3.5 text-primary-400 flex-shrink-0 mt-0.5" />
+                MCE Health Centre, Salagame Road, Hassan - 573202
               </p>
-              <p className="flex items-center gap-1.5">
-                <Mail className="w-4 h-4 text-primary-400 flex-shrink-0" />
+              <p className="flex items-center gap-1.5 text-slate-400 text-[11px]">
+                <Mail className="w-3.5 h-3.5 text-primary-400 flex-shrink-0" />
                 campuscare-project@mcehassan.ac.in
-              </p>
-              <p className="flex items-center gap-1.5">
-                <ShieldCheck className="w-4 h-4 text-tealAccent-400 flex-shrink-0" />
-                Evidence-Grounded Triage (MedlinePlus & WHO)
               </p>
             </div>
           </div>
