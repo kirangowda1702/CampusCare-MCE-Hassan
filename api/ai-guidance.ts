@@ -507,14 +507,14 @@ JSON Schema:
       let successfulModel = '';
 
       const candidateModels = [
+        'gemini-3.8-flash',
+        'gemini-3.5-flash-lite',
         'gemma-4-26b-a4b-it',
-        'gemma-4-31b-it',
-        'gemini-2.5-flash-lite',
-        'gemini-flash-latest'
+        'gemma-4-31b-it'
       ];
 
-      let lastErr = '';
-      for (const m of candidateModels.slice(0, 3)) {
+      const modelDiagnostics: string[] = [];
+      for (const m of candidateModels) {
         try {
           const geminiRes = await fetch(
             `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${apiKey}`,
@@ -524,9 +524,13 @@ JSON Schema:
                 'Content-Type': 'application/json',
                 'x-goog-api-key': apiKey
               },
-              signal: AbortSignal.timeout(6500),
+              signal: AbortSignal.timeout(6000),
               body: JSON.stringify({
-                contents: [{ parts: [{ text: systemPrompt }] }]
+                contents: [{ parts: [{ text: systemPrompt }] }],
+                generationConfig: {
+                  maxOutputTokens: 800,
+                  temperature: 0.2
+                }
               })
             }
           );
@@ -540,21 +544,21 @@ JSON Schema:
               successfulModel = m;
               break;
             } else {
-              lastErr = `${m} returned 200 but candidate parts was empty. finishReason: ${candidate?.finishReason || 'none'}`;
+              modelDiagnostics.push(`${m} empty: finishReason=${candidate?.finishReason || 'unknown'}`);
             }
           } else {
             const errJson = await geminiRes.json().catch(() => ({}));
-            lastErr = `${m} HTTP ${geminiRes.status}: ${errJson?.error?.message || 'unknown'}`;
+            modelDiagnostics.push(`${m} HTTP ${geminiRes.status}: ${errJson?.error?.message || 'unknown'}`);
           }
         } catch (geminiErr: any) {
-          lastErr = `${m} exception: ${geminiErr?.message || 'network error'}`;
+          modelDiagnostics.push(`${m} err: ${geminiErr?.message || 'network timeout'}`);
         }
       }
 
       if (!rawText) {
         return res.status(503).json({
           error: 'AI Health Guidance is currently unavailable. Please consult a doctor or contact Campus Health Centre.',
-          diagnostic: lastErr
+          diagnostic: modelDiagnostics.join(' | ')
         });
       }
 
