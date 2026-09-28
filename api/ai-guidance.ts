@@ -193,12 +193,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     } catch (listErr) {}
 
-    const candidateModels = availableModels.length > 0 
-      ? availableModels 
-      : ['gemini-2.0-flash-exp', 'gemini-1.5-flash-latest', 'gemini-1.5-flash-8b', 'gemini-pro'];
+    const preferredOrder = [
+      'gemini-flash-latest',
+      'gemini-pro-latest',
+      'gemini-flash-lite-latest',
+      'gemini-2.5-flash-lite',
+      'gemini-2.5-flash',
+      'gemini-2.5-pro'
+    ];
+
+    const candidateModels = (availableModels.length > 0 ? availableModels : preferredOrder)
+      .filter(m => !m.includes('tts'))
+      .sort((a, b) => {
+        const idxA = preferredOrder.indexOf(a);
+        const idxB = preferredOrder.indexOf(b);
+        return (idxA !== -1 ? idxA : 99) - (idxB !== -1 ? idxB : 99);
+      });
+
     let lastProbeResult: any = null;
 
-    for (const m of candidateModels.slice(0, 5)) {
+    for (const m of candidateModels.slice(0, 8)) {
       try {
         const probeRes = await fetch(
           `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${apiKey}`,
@@ -512,11 +526,24 @@ JSON Schema:
         }
       } catch (listErr) {}
 
-      const candidateModels = availableModels.length > 0
-        ? availableModels
-        : ['gemini-2.0-flash-exp', 'gemini-1.5-flash-latest', 'gemini-1.5-flash-8b', 'gemini-pro'];
+      const preferredOrder = [
+        'gemini-flash-latest',
+        'gemini-pro-latest',
+        'gemini-flash-lite-latest',
+        'gemini-2.5-flash-lite',
+        'gemini-2.5-flash',
+        'gemini-2.5-pro'
+      ];
 
-      for (const m of candidateModels.slice(0, 5)) {
+      const candidateModels = (availableModels.length > 0 ? availableModels : preferredOrder)
+        .filter(m => !m.includes('tts'))
+        .sort((a, b) => {
+          const idxA = preferredOrder.indexOf(a);
+          const idxB = preferredOrder.indexOf(b);
+          return (idxA !== -1 ? idxA : 99) - (idxB !== -1 ? idxB : 99);
+        });
+
+      for (const m of candidateModels.slice(0, 8)) {
         try {
           const geminiRes = await fetch(
             `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${apiKey}`,
