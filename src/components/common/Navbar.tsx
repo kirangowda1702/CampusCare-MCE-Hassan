@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import {
   HeartPulse,
+  Home,
   Sun,
   Moon,
   Bell,
@@ -49,10 +50,11 @@ export const Navbar: React.FC = () => {
   };
 
   const navLinks = [
+    { name: 'Home', path: '/', icon: Home },
     { name: 'Services', path: '/services', icon: Layers },
     { name: 'Doctors', path: '/doctors', icon: Stethoscope },
     { name: 'AI Health Guidance', path: '/symptom-checker', icon: Sparkles },
-    { name: 'Book Appointment', path: '/appointments/book', icon: Calendar },
+    { name: 'Appointments', path: '/appointments', icon: Calendar },
     { name: 'Hospitals & Pharmacies', path: '/hospitals', icon: MapPin },
   ];
 
@@ -86,19 +88,24 @@ export const Navbar: React.FC = () => {
           <nav className="hidden lg:flex items-center gap-1">
             {navLinks.map(link => {
               const Icon = link.icon;
-              const isActive = location.pathname === link.path;
+              const isActive = link.path === '/' 
+                ? location.pathname === '/' 
+                : location.pathname.startsWith(link.path);
               return (
                 <Link
                   key={link.name}
                   to={link.path}
-                  className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all ${
+                  className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all relative ${
                     isActive
-                      ? 'bg-primary-50 dark:bg-primary-950/60 text-primary-600 dark:text-primary-400 font-bold'
+                      ? 'bg-primary-50 dark:bg-primary-950/60 text-primary-600 dark:text-primary-400 font-bold shadow-xs'
                       : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
                   }`}
                 >
                   <Icon className="w-4 h-4" />
                   {link.name}
+                  {isActive && (
+                    <span className="absolute bottom-0 left-3 right-3 h-0.5 bg-primary-600 dark:bg-primary-400 rounded-full" />
+                  )}
                 </Link>
               );
             })}
@@ -271,14 +278,21 @@ export const Navbar: React.FC = () => {
         <div className="lg:hidden border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-4 pt-3 pb-6 space-y-2">
           {navLinks.map(link => {
             const Icon = link.icon;
+            const isActive = link.path === '/' 
+              ? location.pathname === '/' 
+              : location.pathname.startsWith(link.path);
             return (
               <Link
                 key={link.name}
                 to={link.path}
                 onClick={() => setIsMenuOpen(false)}
-                className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
+                className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all ${
+                  isActive
+                    ? 'bg-primary-50 dark:bg-primary-950/60 text-primary-600 dark:text-primary-400 font-bold'
+                    : 'text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
+                }`}
               >
-                <Icon className="w-4 h-4 text-primary-500" />
+                <Icon className={`w-4 h-4 ${isActive ? 'text-primary-600 dark:text-primary-400' : 'text-primary-500'}`} />
                 {link.name}
               </Link>
             );

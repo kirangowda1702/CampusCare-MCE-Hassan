@@ -1,10 +1,10 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { HeartPulse, ShieldAlert, Phone, MapPin, Mail, ExternalLink, ShieldCheck } from 'lucide-react';
+import { HeartPulse, ShieldAlert, Phone, MapPin, Mail, ShieldCheck, ArrowUpRight } from 'lucide-react';
 
 export const Footer: React.FC = () => {
   return (
-    <footer className="bg-slate-900 text-slate-300 border-t border-slate-800 pt-12 pb-8">
+    <footer className="bg-slate-900 text-slate-300 border-t border-slate-800 pt-14 pb-8">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-8 pb-10 border-b border-slate-800">
           {/* Institution Info */}
@@ -17,52 +17,70 @@ export const Footer: React.FC = () => {
                 <span className="font-extrabold text-white text-lg tracking-tight">
                   Campus<span className="text-primary-400">Care</span>
                 </span>
-                <span className="block text-[11px] text-slate-400">
-                  MCE Hassan Telemedicine & Health Network
+                <span className="block text-[11px] text-slate-400 font-medium">
+                  Malnad College of Engineering, Hassan
                 </span>
               </div>
             </div>
 
             <p className="text-xs text-slate-400 leading-relaxed max-w-sm">
-              An advanced digital healthcare platform engineered for Malnad College of Engineering (MCE), Hassan. Connecting students, faculty, and campus doctors with instant medical consultations, e-records, and emergency triage.
+              An advanced digital healthcare command center engineered for Malnad College of Engineering (MCE), Hassan. Connecting students, faculty, and campus doctors with clinical guidance, verified practitioner appointments, e-records, and emergency first aid.
             </p>
 
-            <div className="p-3.5 rounded-xl bg-slate-800/80 border border-slate-700/80 text-xs space-y-1">
-              <div className="flex items-center gap-2 text-amber-400 font-bold">
-                <ShieldAlert className="w-4 h-4" /> Campus Emergency Response (Prototype Alert)
+            <div className="p-4 rounded-2xl bg-slate-800/90 border border-rose-500/30 text-xs space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-rose-400 font-bold">
+                  <ShieldAlert className="w-4 h-4 animate-pulse" /> MCE First Aid Support
+                </div>
+                <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-rose-500/20 text-rose-300">
+                  Campus Dispatch
+                </span>
               </div>
-              <div className="text-slate-300 font-mono font-semibold">Campus First Aid Desk • Call 9110885805 for Immediate First Aid</div>
+              <div className="flex items-center justify-between pt-1">
+                <div className="text-slate-300 font-mono font-bold text-sm">
+                  9110885805
+                </div>
+                <a
+                  href="tel:9110885805"
+                  className="px-3 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition-colors flex items-center gap-1"
+                >
+                  <Phone className="w-3 h-3" /> Call First Aid
+                </a>
+              </div>
             </div>
           </div>
 
-          {/* Quick Links */}
+          {/* Quick Navigation Links */}
+          <div className="space-y-3 text-xs">
+            <h4 className="font-bold text-white uppercase tracking-wider text-[11px]">Navigation</h4>
+            <ul className="space-y-2 text-slate-400 font-medium">
+              <li><Link to="/" className="hover:text-primary-400 transition-colors">Home</Link></li>
+              <li><Link to="/services" className="hover:text-primary-400 transition-colors">Healthcare Services</Link></li>
+              <li><Link to="/doctors" className="hover:text-primary-400 transition-colors">Doctors</Link></li>
+              <li><Link to="/symptom-checker" className="hover:text-primary-400 transition-colors">AI Guidance</Link></li>
+              <li><Link to="/appointments" className="hover:text-primary-400 transition-colors">Appointments</Link></li>
+              <li><Link to="/emergency" className="hover:text-rose-400 transition-colors flex items-center gap-1">Emergency <ShieldAlert className="w-3 h-3 text-rose-500" /></Link></li>
+            </ul>
+          </div>
+
+          {/* Healthcare Services */}
           <div className="space-y-3 text-xs">
             <h4 className="font-bold text-white uppercase tracking-wider text-[11px]">Healthcare Services</h4>
-            <ul className="space-y-2 text-slate-400">
-              <li><Link to="/services" className="hover:text-white transition-colors">General Medicine</Link></li>
-              <li><Link to="/services" className="hover:text-white transition-colors">Student Counseling</Link></li>
-              <li><Link to="/services" className="hover:text-white transition-colors">Dermatology Care</Link></li>
-              <li><Link to="/services" className="hover:text-white transition-colors">Sports Orthopedics</Link></li>
-              <li><Link to="/services" className="hover:text-white transition-colors">Dental & Eye Care</Link></li>
+            <ul className="space-y-2 text-slate-400 font-medium">
+              <li><Link to="/symptom-checker" className="hover:text-primary-400 transition-colors">AI Health Guidance</Link></li>
+              <li><Link to="/doctors" className="hover:text-primary-400 transition-colors">Doctor Consultations</Link></li>
+              <li><Link to="/appointments/book" className="hover:text-primary-400 transition-colors">Video Consultations</Link></li>
+              <li><Link to="/medical-records" className="hover:text-primary-400 transition-colors">Medical Records Vault</Link></li>
+              <li><Link to="/prescriptions" className="hover:text-primary-400 transition-colors">Prescriptions</Link></li>
+              <li><Link to="/medications" className="hover:text-primary-400 transition-colors">Medicine Reminders</Link></li>
+              <li><Link to="/hospitals" className="hover:text-primary-400 transition-colors">Hospitals & Pharmacies</Link></li>
             </ul>
           </div>
 
-          {/* Clinical Features */}
+          {/* Campus Center & Institutional Trust */}
           <div className="space-y-3 text-xs">
-            <h4 className="font-bold text-white uppercase tracking-wider text-[11px]">Platform Portals</h4>
-            <ul className="space-y-2 text-slate-400">
-              <li><Link to="/symptom-checker" className="hover:text-white transition-colors">AI Symptom Guide</Link></li>
-              <li><Link to="/appointments/book" className="hover:text-white transition-colors">Book Consultation</Link></li>
-              <li><Link to="/medical-records" className="hover:text-white transition-colors">Medical E-Vault</Link></li>
-              <li><Link to="/medications" className="hover:text-white transition-colors">Medicine Reminders</Link></li>
-              <li><Link to="/hospitals" className="hover:text-white transition-colors">Hassan Hospital Map</Link></li>
-            </ul>
-          </div>
-
-          {/* Campus Location */}
-          <div className="space-y-3 text-xs">
-            <h4 className="font-bold text-white uppercase tracking-wider text-[11px]">Campus Center</h4>
-            <div className="space-y-2 text-slate-400">
+            <h4 className="font-bold text-white uppercase tracking-wider text-[11px]">Campus Facility</h4>
+            <div className="space-y-2.5 text-slate-400">
               <p className="flex items-start gap-1.5">
                 <MapPin className="w-4 h-4 text-primary-400 flex-shrink-0 mt-0.5" />
                 MCE Health Centre, Salagame Road, Hassan, Karnataka - 573202
@@ -73,7 +91,7 @@ export const Footer: React.FC = () => {
               </p>
               <p className="flex items-center gap-1.5">
                 <ShieldCheck className="w-4 h-4 text-tealAccent-400 flex-shrink-0" />
-                Hassan Healthcare Reference Grid
+                Evidence-Grounded Triage (MedlinePlus & WHO)
               </p>
             </div>
           </div>
@@ -81,12 +99,12 @@ export const Footer: React.FC = () => {
 
         {/* Medical Safety Disclaimer & Copyright */}
         <div className="pt-6 flex flex-col md:flex-row items-center justify-between gap-4 text-[11px] text-slate-500">
-          <p className="text-center md:text-left max-w-2xl">
+          <p className="text-center md:text-left max-w-2xl leading-relaxed">
             <span className="font-bold text-slate-400">Academic Project Disclaimer: </span>
-            CampusCare is an engineering academic capstone prototype developed for Malnad College of Engineering (MCE Hassan). For campus emergencies, contact MCE First Aid at <span className="text-rose-400 font-bold">9110885805</span>.
+            CampusCare is an engineering academic capstone prototype developed for Malnad College of Engineering (MCE Hassan). AI guidance is educational and does not replace medical diagnosis. For campus emergencies, contact MCE First Aid at <span className="text-rose-400 font-bold">9110885805</span>.
           </p>
           <div className="flex items-center gap-4 text-slate-400">
-            <span>© 2026 MCE Hassan (Academic Prototype)</span>
+            <span>© 2026 MCE Hassan</span>
             <Link to="/settings" className="hover:underline">Privacy Policy</Link>
           </div>
         </div>
