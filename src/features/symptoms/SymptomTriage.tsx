@@ -34,6 +34,14 @@ import { SymptomGuidanceRequest, SymptomGuidanceResponse, MedicineInfo, Doctor }
 import { useEmergency } from '../../context/EmergencyContext';
 import { aiService } from '../../services/aiService';
 import { doctorService } from '../../services/doctorService';
+import { CampusCareMedicine, CAMPUSCARE_MEDICINES } from '../../data/medicines';
+import { medicineService, MedicineSearchResult } from '../../services/medicineService';
+
+// Helper to determine if a matched medical emergency phrase was negated (e.g. "no sudden explosive", "without shortness of breath")
+function isNegatedPhrase(fullText: string, matchIndex: number): boolean {
+  const preceding = fullText.slice(Math.max(0, matchIndex - 40), matchIndex).toLowerCase();
+  return /\b(no|not|without|denies|denied|none of|none|negative for|neither|never)\b\s*[^.!,;]*$/i.test(preceding);
+}
 
 // Deterministic realtime emergency red-flag patterns
 const RED_FLAG_PATTERNS = [
@@ -42,15 +50,15 @@ const RED_FLAG_PATTERNS = [
     reason: 'Acute chest discomfort can indicate a cardiac emergency.'
   },
   {
-    pattern: /shortness of breath|difficulty breathing|struggling to breathe|cannot catch breath|wheezing|difficulty catching breath/i,
+    pattern: /severe breathing difficulty|struggling to breathe|cannot catch breath|wheezing with distress|severe respiratory distress/i,
     reason: 'Acute breathing difficulty or respiratory distress requires immediate medical attention.'
   },
   {
-    pattern: /worst headache|sudden severe headache|thunderclap|sudden explosive|explosive.*headache/i,
+    pattern: /thunderclap(\s+headache)?|worst headache of (my |the )?life|sudden explosive (onset|headache|severe headache)|explosive severe headache/i,
     reason: 'Sudden explosive or thunderclap headache requires urgent neurological evaluation.'
   },
   {
-    pattern: /weakness.*(arm|leg|face|side)|slurred speech|facial droop|difficulty speaking/i,
+    pattern: /weakness in.*(arm|leg|face|side)|slurred speech|facial droop|difficulty speaking/i,
     reason: 'Limb weakness or acute speech changes are potential stroke warning signs.'
   },
   {
@@ -64,6 +72,10 @@ const RED_FLAG_PATTERNS = [
   {
     pattern: /coughing blood|vomiting blood|heavy bleeding|uncontrolled bleeding/i,
     reason: 'Active hemorrhage requires immediate casualty emergency care.'
+  },
+  {
+    pattern: /active seizure|convulsions/i,
+    reason: 'Active seizure requires emergency medical care.'
   }
 ];
 
@@ -128,9 +140,9 @@ export const SymptomTriage: React.FC<SymptomTriageProps> = ({
   // Doctor Directory state for matched specialty cards
   const [verifiedDoctors, setVerifiedDoctors] = useState<Doctor[]>([]);
 
-  // Medicine Search State
+  // Medicine Search State (Source: campuscare_medicines.json)
   const [medSearchQuery, setMedSearchQuery] = useState('');
-  const [medSearchResults, setMedSearchResults] = useState<MedicineInfo[] | null>(null);
+  const [medSearchResult, setMedSearchResult] = useState<MedicineSearchResult | null>(null);
   const [isMedLoading, setIsMedLoading] = useState(false);
   const [medError, setMedError] = useState<string | null>(null);
 
@@ -198,11 +210,16 @@ export const SymptomTriage: React.FC<SymptomTriageProps> = ({
     return 'general';
   };
 
-  // Check emergency red-flag patterns
+  // Check emergency red-flag patterns with negation safety
   const checkRedFlags = (text: string): { isEmergency: boolean; reason?: string } => {
+    if (!text) return { isEmergency: false };
     for (const rf of RED_FLAG_PATTERNS) {
-      if (rf.pattern.test(text)) {
-        return { isEmergency: true, reason: rf.reason };
+      const regex = new RegExp(rf.pattern.source, 'gi');
+      let match: RegExpExecArray | null;
+      while ((match = regex.exec(text)) !== null) {
+        if (!isNegatedPhrase(text, match.index)) {
+          return { isEmergency: true, reason: rf.reason };
+        }
       }
     }
     return { isEmergency: false };
@@ -369,7 +386,7 @@ export const SymptomTriage: React.FC<SymptomTriageProps> = ({
         addBotMessage({
           text: "Safety Check: Are you experiencing high fever with neck stiffness, vomiting, or sudden explosive onset?",
           quickChoices: [
-            { label: '✅ None of these (gradual, mild)', value: 'No high fever, no neck stiffness, no sudden explosive onset' },
+            { label: '✅ None of these (gradual, mild)', value: 'Gradual onset, no neck stiffness, no high fever' },
             { label: 'Mild nausea only', value: 'Mild nausea without vomiting or stiff neck' },
             { label: 'Sudden explosive severe headache', value: 'Sudden explosive severe headache' },
             { label: 'Fever with stiff neck', value: 'Fever with neck stiffness' }
@@ -379,9 +396,9 @@ export const SymptomTriage: React.FC<SymptomTriageProps> = ({
         addBotMessage({
           text: "Safety Check: Are you able to breathe normally without wheezing or shortness of breath?",
           quickChoices: [
-            { label: '✅ Breathing is normal', value: 'Breathing is normal, no shortness of breath' },
+            { label: '✅ Breathing is normal', value: 'Breathing is normal and comfortable' },
             { label: 'Mild congestion only', value: 'Mild congestion, breathing okay' },
-            { label: 'Wheezing or difficulty catching breath', value: 'Wheezing and difficulty catching breath' }
+            { label: 'Wheezing with breathing distress', value: 'Wheezing with distress and severe breathing difficulty' }
           ]
         });
       } else if (detectedDomain === 'stomach_gi') {
@@ -475,21 +492,28 @@ export const SymptomTriage: React.FC<SymptomTriageProps> = ({
     }
   };
 
-  // Medicine search handler
-  const handleMedicineSearch = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!medSearchQuery.trim()) return;
-
+  // Medicine search handler using uploaded medicine dataset
+  const executeMedicineSearch = (query: string) => {
+    const cleanQ = query.trim();
+    if (!cleanQ) return;
     setIsMedLoading(true);
     setMedError(null);
     try {
-      const results = await aiService.queryMedicine(medSearchQuery.trim());
-      setMedSearchResults(results);
+      const res = medicineService.searchMedicines(cleanQ);
+      setMedSearchResult(res);
+      if (!res.hasResults) {
+        setMedError(res.message || 'No medicine information was found in the current CampusCare medicine dataset. Consult a doctor or pharmacist.');
+      }
     } catch (err: any) {
-      setMedError(err.message || 'No medicine information found for this query.');
+      setMedError(err.message || 'Error searching medicine dataset.');
     } finally {
       setIsMedLoading(false);
     }
+  };
+
+  const handleMedicineSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    executeMedicineSearch(medSearchQuery);
   };
 
   // Matched doctors from directory
@@ -839,30 +863,108 @@ export const SymptomTriage: React.FC<SymptomTriageProps> = ({
                             </p>
                           </div>
 
-                          {/* 12. Medicine Information ("Common OTC Information") */}
-                          {msg.triageData.common_otc_options?.length > 0 && (
-                            <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-700 space-y-2">
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-1.5 font-bold text-slate-900 dark:text-white text-xs">
-                                  <Pill className="w-4 h-4 text-emerald-600" />
-                                  <span>Common OTC Information:</span>
+                          {/* 12. Related Medicine Information (Source of truth: campuscare_medicines.json) */}
+                          {(() => {
+                            const relatedMeds = medicineService.getMedicinesForSymptom(
+                              `${symptomSummary} ${followUpAnswers.character || ''}`
+                            );
+
+                            return (
+                              <div className="p-4 sm:p-5 rounded-3xl bg-slate-50 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 space-y-3.5">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-2">
+                                    <div className="w-8 h-8 rounded-xl bg-emerald-500/10 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold">
+                                      <Pill className="w-4 h-4" />
+                                    </div>
+                                    <div>
+                                      <h4 className="font-extrabold text-xs sm:text-sm text-slate-900 dark:text-white flex items-center gap-1.5">
+                                        💊 Related Medicine Information
+                                      </h4>
+                                      <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                                        {symptomSummary || 'Reported'} — Symptom
+                                      </p>
+                                    </div>
+                                  </div>
+                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                                    Educational Info
+                                  </span>
                                 </div>
-                                <span className="text-[10px] font-bold text-slate-500">
-                                  Educational info — not a prescription
-                                </span>
-                              </div>
-                              <ul className="list-disc list-inside text-xs text-slate-600 dark:text-slate-300 space-y-1">
-                                {msg.triageData.common_otc_options.map((opt, i) => (
-                                  <li key={i}>{opt}</li>
-                                ))}
-                              </ul>
-                              <div className="pt-2 border-t border-slate-200 dark:border-slate-800 text-[11px] text-slate-500 dark:text-slate-400 space-y-1">
-                                <p>
-                                  Follow the product label and consult a healthcare professional if you have medical conditions, take other medicines, are pregnant, or are unsure whether the medicine is appropriate for you.
+
+                                <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed">
+                                  Medicine information related to this symptom from the verified CampusCare medicine dataset. Discuss with a pharmacist or healthcare professional.
                                 </p>
+
+                                {relatedMeds.length > 0 ? (
+                                  <div className="space-y-3">
+                                    {relatedMeds.map((med, mIdx) => (
+                                      <div
+                                        key={mIdx}
+                                        className="p-4 rounded-2xl bg-white dark:bg-slate-800/90 border border-slate-200/90 dark:border-slate-700 space-y-2.5 shadow-xs"
+                                      >
+                                        <div className="flex items-start justify-between gap-2">
+                                          <div>
+                                            <h5 className="font-extrabold text-xs sm:text-sm text-slate-900 dark:text-white">
+                                              {med.medicine_name}
+                                            </h5>
+                                            <div className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 mt-0.5">
+                                              Category: {med.category}
+                                            </div>
+                                          </div>
+                                          <span className="text-[10px] font-mono text-slate-400 bg-slate-100 dark:bg-slate-900 px-2 py-0.5 rounded">
+                                            {med.generic_name}
+                                          </span>
+                                        </div>
+
+                                        <div className="text-xs text-slate-600 dark:text-slate-300">
+                                          <span className="font-bold text-slate-700 dark:text-slate-200">Commonly related to: </span>
+                                          <span className="capitalize">{med.related_symptoms.join(', ')}</span>
+                                        </div>
+
+                                        <div className="p-3 rounded-xl bg-amber-50/70 dark:bg-amber-950/40 border border-amber-200/80 dark:border-amber-900/60 space-y-1">
+                                          <div className="text-[10px] font-bold uppercase tracking-wider text-amber-800 dark:text-amber-300 flex items-center gap-1">
+                                            <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
+                                            Safety Information
+                                          </div>
+                                          <ul className="list-disc list-inside text-xs text-amber-900 dark:text-amber-200 space-y-0.5">
+                                            {med.safety_notes.map((note, nIdx) => (
+                                              <li key={nIdx}>{note}</li>
+                                            ))}
+                                          </ul>
+                                        </div>
+
+                                        <div className="flex items-center justify-between pt-1 border-t border-slate-100 dark:border-slate-700/60 text-[11px]">
+                                          <span className="text-slate-500 dark:text-slate-400">
+                                            Source: <strong className="text-slate-700 dark:text-slate-200">{med.source}</strong>
+                                          </span>
+                                          <a
+                                            href={med.source_url}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="inline-flex items-center gap-1 text-primary-600 dark:text-primary-400 hover:underline font-bold"
+                                          >
+                                            View Source <ExternalLink className="w-3 h-3" />
+                                          </a>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <div className="p-3.5 rounded-2xl bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-xs text-slate-600 dark:text-slate-400 space-y-1">
+                                    <p className="font-semibold text-slate-700 dark:text-slate-300">
+                                      No medicine information was found in the current CampusCare medicine dataset for this symptom.
+                                    </p>
+                                    <p>
+                                      Please consult a doctor or licensed pharmacist for personalized evaluation.
+                                    </p>
+                                  </div>
+                                )}
+
+                                <div className="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed border border-slate-200 dark:border-slate-700">
+                                  ⚠️ <strong>Disclaimer:</strong> Medicine information is educational and does not replace advice from a doctor or pharmacist. CampusCare does not generate prescriptions or individualized dosage instructions.
+                                </div>
                               </div>
-                            </div>
-                          )}
+                            );
+                          })()}
 
                           {/* 13. Recommended Specialty */}
                           <div className="p-3.5 rounded-2xl bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-900 text-xs space-y-1">
@@ -1167,7 +1269,8 @@ export const SymptomTriage: React.FC<SymptomTriageProps> = ({
         </div>
       ) : (
         /* ========================================================================= */
-        /* MEDICINE SEARCH TAB (Active Ingredient & Safety Cautions)                 */
+        /* ========================================================================= */
+        /* MEDICINE SEARCH TAB (campuscare_medicines.json Dataset)                   */
         /* ========================================================================= */
         <div className={isCompact ? "flex-1 overflow-y-auto p-4 space-y-4 bg-white dark:bg-slate-900" : "bg-white dark:bg-slate-900 p-6 sm:p-8 rounded-3xl border border-slate-200/90 dark:border-slate-800 shadow-sm space-y-6"}>
           <div className="flex items-center gap-3.5 pb-4 border-b border-slate-100 dark:border-slate-800">
@@ -1176,11 +1279,53 @@ export const SymptomTriage: React.FC<SymptomTriageProps> = ({
             </div>
             <div>
               <h2 className="text-base sm:text-lg font-extrabold text-slate-900 dark:text-white">
-                Educational Medicine & OTC Information
+                Educational Medicine & Symptom Information
               </h2>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Educational information only — not a prescription. Look up active ingredients, precautions, and side effects.
+                Source of Truth: CampusCare Medicine Dataset (campuscare_medicines.json). Educational only — not a prescription.
               </p>
+            </div>
+          </div>
+
+          {/* Quick Search Chips */}
+          <div className="space-y-2">
+            <div className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+              <span>Quick Lookups by Symptom or Drug Name:</span>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {[
+                { label: 'Headache', type: 'symptom' },
+                { label: 'Fever', type: 'symptom' },
+                { label: 'Cough', type: 'symptom' },
+                { label: 'Sneezing', type: 'symptom' },
+                { label: 'Heartburn', type: 'symptom' },
+                { label: 'Itching', type: 'symptom' },
+                { label: 'Paracetamol', type: 'med' },
+                { label: 'Ibuprofen', type: 'med' },
+                { label: 'Cetirizine', type: 'med' },
+                { label: 'Loratadine', type: 'med' },
+                { label: 'Dextromethorphan', type: 'med' },
+                { label: 'Calcium Carbonate', type: 'med' },
+                { label: 'Famotidine', type: 'med' }
+              ].map(chip => (
+                <button
+                  key={chip.label}
+                  type="button"
+                  onClick={() => {
+                    setMedSearchQuery(chip.label);
+                    executeMedicineSearch(chip.label);
+                  }}
+                  className={`text-xs py-1 px-2.5 rounded-xl font-semibold transition-all border ${
+                    chip.type === 'symptom'
+                      ? 'bg-blue-50 dark:bg-blue-950/50 hover:bg-blue-100 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800'
+                      : 'bg-emerald-50 dark:bg-emerald-950/50 hover:bg-emerald-100 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+                  }`}
+                >
+                  {chip.type === 'symptom' ? '🩺 ' : '💊 '}
+                  {chip.label}
+                </button>
+              ))}
             </div>
           </div>
 
@@ -1191,7 +1336,7 @@ export const SymptomTriage: React.FC<SymptomTriageProps> = ({
                 type="text"
                 value={medSearchQuery}
                 onChange={e => setMedSearchQuery(e.target.value)}
-                placeholder="Search active drug name (e.g. Paracetamol, Ibuprofen, Cetirizine, ORS)..."
+                placeholder="Search by medicine name, generic name, or symptom (e.g. Paracetamol, headache, cough)..."
                 className="w-full pl-10 pr-4 py-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs sm:text-sm font-medium focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-white"
               />
             </div>
@@ -1201,58 +1346,105 @@ export const SymptomTriage: React.FC<SymptomTriageProps> = ({
               className="py-3 px-6 rounded-2xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-xs flex items-center gap-2 shadow-sm transition-all"
             >
               {isMedLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
-              <span>Search Drug Info</span>
+              <span>Search Dataset</span>
             </button>
           </form>
 
-          {medError && (
-            <div className="p-3.5 rounded-2xl bg-rose-50 dark:bg-rose-950 text-rose-700 dark:text-rose-300 text-xs font-semibold">
-              {medError}
+          {medError && !medSearchResult?.hasResults && (
+            <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/70 border border-rose-200 dark:border-rose-900 text-rose-800 dark:text-rose-200 text-xs space-y-1">
+              <div className="font-bold flex items-center gap-1.5">
+                <AlertTriangle className="w-4 h-4 text-rose-600" />
+                <span>No Medicine Information Found</span>
+              </div>
+              <p>{medError}</p>
+              <p className="text-[11px] text-rose-700 dark:text-rose-300">
+                Please consult a doctor or licensed pharmacist.
+              </p>
             </div>
           )}
 
-          {medSearchResults && medSearchResults.length > 0 && (
+          {medSearchResult && medSearchResult.hasResults && (
             <div className="space-y-4">
-              {medSearchResults.map((med, idx) => (
+              {/* Header differentiating Symptom vs Medicine query */}
+              <div className={`p-4 rounded-2xl border flex items-center justify-between ${
+                medSearchResult.isSymptomQuery
+                  ? 'bg-blue-50/80 dark:bg-blue-950/40 border-blue-200 dark:border-blue-900'
+                  : 'bg-emerald-50/80 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-900'
+              }`}>
+                <div>
+                  <h3 className="font-extrabold text-sm sm:text-base text-slate-900 dark:text-white capitalize">
+                    {medSearchResult.isSymptomQuery
+                      ? `${medSearchResult.matchedSymptom || medSearchResult.query} — Symptom`
+                      : `${medSearchResult.query} — Medicine Information`}
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    {medSearchResult.isSymptomQuery
+                      ? 'Related Medicine Information from CampusCare Dataset'
+                      : 'Verified Educational Profile from CampusCare Dataset'}
+                  </p>
+                </div>
+                <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full border ${
+                  medSearchResult.isSymptomQuery
+                    ? 'bg-blue-100 dark:bg-blue-900/60 text-blue-800 dark:text-blue-200 border-blue-300'
+                    : 'bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-200 border-emerald-300'
+                }`}>
+                  {medSearchResult.isSymptomQuery ? 'Symptom Search' : 'Drug Search'}
+                </span>
+              </div>
+
+              {medSearchResult.medicines.map((med, idx) => (
                 <div
                   key={idx}
-                  className="p-5 sm:p-6 rounded-3xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 space-y-3.5"
+                  className="p-5 sm:p-6 rounded-3xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 space-y-3.5 shadow-xs"
                 >
-                  <div className="flex items-center justify-between">
-                    <h3 className="font-extrabold text-sm sm:text-base text-slate-900 dark:text-white flex items-center gap-2">
-                      <Pill className="w-4 h-4 text-emerald-600" />
-                      {med.name}
-                    </h3>
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300">
-                      Educational Info
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h3 className="font-extrabold text-sm sm:text-base text-slate-900 dark:text-white flex items-center gap-2">
+                        <Pill className="w-4 h-4 text-emerald-600" />
+                        {med.medicine_name}
+                      </h3>
+                      <div className="text-xs font-semibold text-emerald-700 dark:text-emerald-400 mt-0.5">
+                        Category: {med.category}
+                      </div>
+                    </div>
+                    <span className="text-[10px] font-mono text-slate-500 bg-white dark:bg-slate-900 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700">
+                      {med.generic_name}
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
-                    <div className="p-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 space-y-1">
-                      <span className="font-bold text-slate-900 dark:text-white">General Purpose:</span>
-                      <p className="text-slate-600 dark:text-slate-400">{med.general_use}</p>
-                    </div>
-                    <div className="p-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 space-y-1">
-                      <span className="font-bold text-amber-600 dark:text-amber-400">Important Cautions:</span>
-                      <p className="text-slate-600 dark:text-slate-400">{med.cautions}</p>
-                    </div>
-                    {med.warnings && (
-                      <div className="p-3.5 rounded-2xl bg-rose-50/70 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 md:col-span-2 space-y-1">
-                        <span className="font-bold text-rose-700 dark:text-rose-300">Safety Warnings:</span>
-                        <p className="text-rose-800 dark:text-rose-200">{med.warnings}</p>
-                      </div>
-                    )}
-                    {med.side_effects && (
-                      <div className="p-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 md:col-span-2 space-y-1">
-                        <span className="font-bold text-slate-700 dark:text-slate-300">Potential Side Effects:</span>
-                        <p className="text-slate-600 dark:text-slate-400">{med.side_effects}</p>
-                      </div>
-                    )}
+                  <div className="text-xs text-slate-600 dark:text-slate-300">
+                    <span className="font-bold text-slate-800 dark:text-slate-200">Related Symptoms: </span>
+                    <span className="capitalize">{med.related_symptoms.join(', ')}</span>
                   </div>
 
-                  <div className="text-[11px] text-slate-500 dark:text-slate-400 pt-2 border-t border-slate-200 dark:border-slate-700/60 leading-relaxed">
-                    ⚠️ <em>Follow product packaging label and consult a licensed physician or pharmacist. CampusCare does not provide personalized dosage calculations or prescription recommendations.</em>
+                  <div className="p-3.5 rounded-2xl bg-amber-50/70 dark:bg-amber-950/40 border border-amber-200/80 dark:border-amber-900/60 space-y-1.5">
+                    <span className="font-bold text-xs text-amber-800 dark:text-amber-300 flex items-center gap-1.5">
+                      <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
+                      Safety Notes & Precautions:
+                    </span>
+                    <ul className="list-disc list-inside text-xs text-amber-900 dark:text-amber-200 space-y-1">
+                      {med.safety_notes.map((sn, sIdx) => (
+                        <li key={sIdx}>{sn}</li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-2 border-t border-slate-200 dark:border-slate-700/60 text-xs">
+                    <span className="text-slate-500 dark:text-slate-400">
+                      Source: <strong className="text-slate-700 dark:text-slate-200">{med.source}</strong>
+                    </span>
+                    <a
+                      href={med.source_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-primary-600 dark:text-primary-400 hover:underline font-bold"
+                    >
+                      View Source <ExternalLink className="w-3.5 h-3.5" />
+                    </a>
+                  </div>
+
+                  <div className="text-[11px] text-slate-500 dark:text-slate-400 pt-1 leading-relaxed border-t border-slate-100 dark:border-slate-800">
+                    ⚠️ <em>Medicine information is educational and does not replace advice from a doctor or pharmacist. CampusCare does not generate prescriptions or individualized dosage instructions.</em>
                   </div>
                 </div>
               ))}

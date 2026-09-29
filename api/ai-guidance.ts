@@ -58,88 +58,166 @@ const TRUSTED_SOURCES_MAP: Record<string, { name: string; url: string }[]> = {
   ]
 };
 
-// Common Verified Medicines Database
-const VERIFIED_MEDICINE_DATABASE: Record<string, {
-  name: string;
-  general_use: string;
-  warnings: string;
-  cautions: string;
-  side_effects: string;
-  interaction_warnings: string;
+// CampusCare Medicine Information Dataset (Source of Truth: campuscare_medicines.json)
+interface CampusCareMedicine {
+  medicine_name: string;
+  generic_name: string;
+  category: string;
+  related_symptoms: string[];
+  safety_notes: string[];
   source: string;
   source_url: string;
-}> = {
-  paracetamol: {
-    name: 'Paracetamol (Acetaminophen)',
-    general_use: 'Used for temporary relief of mild-to-moderate pain and reduction of fever.',
-    warnings: 'Severe liver injury may occur if taken in excessive amounts, with alcohol, or when combined with other acetaminophen-containing products.',
-    cautions: 'Strictly follow package label or clinician/pharmacist dosing instructions. Do not combine with other products containing paracetamol/acetaminophen. Exercise caution in pre-existing liver disease or chronic alcohol use.',
-    side_effects: 'Generally well-tolerated at recommended doses; potential allergic skin reactions or acute hepatic toxicity in overdose.',
-    interaction_warnings: 'Do not take alongside other paracetamol/acetaminophen-containing medications (including cold/flu remedies) to prevent accidental overdose.',
-    source: 'MedlinePlus Drug Information',
-    source_url: 'https://medlineplus.gov/druginfo/meds/a681004.html'
-  },
-  acetaminophen: {
-    name: 'Paracetamol (Acetaminophen)',
-    general_use: 'Used for temporary relief of mild-to-moderate pain and reduction of fever.',
-    warnings: 'Severe liver injury may occur if taken in excessive amounts, with alcohol, or when combined with other acetaminophen-containing products.',
-    cautions: 'Strictly follow package label or clinician/pharmacist dosing instructions. Do not combine with other products containing paracetamol/acetaminophen. Exercise caution in pre-existing liver disease or chronic alcohol use.',
-    side_effects: 'Generally well-tolerated at recommended doses; potential allergic skin reactions or acute hepatic toxicity in overdose.',
-    interaction_warnings: 'Do not take alongside other paracetamol/acetaminophen-containing medications (including cold/flu remedies) to prevent accidental overdose.',
-    source: 'MedlinePlus Drug Information',
-    source_url: 'https://medlineplus.gov/druginfo/meds/a681004.html'
-  },
-  ibuprofen: {
-    name: 'Ibuprofen',
-    general_use: 'Nonsteroidal anti-inflammatory drug (NSAID) used to relieve pain, reduce inflammation, and lower fever.',
-    warnings: 'May increase the risk of severe stomach ulcers, gastrointestinal bleeding, or cardiovascular events with prolonged high doses.',
-    cautions: 'Always take with food or milk. Avoid in active stomach ulcers, third trimester of pregnancy, severe heart failure, or asthma triggered by NSAIDs.',
-    side_effects: 'Stomach ache, heartburn, nausea, dizziness, indigestion.',
-    interaction_warnings: 'Interacts with aspirin, anticoagulants (blood thinners), other NSAIDs, steroids, and certain blood pressure medications.',
-    source: 'MedlinePlus Drug Information',
-    source_url: 'https://medlineplus.gov/druginfo/meds/a682159.html'
-  },
-  cetirizine: {
-    name: 'Cetirizine',
-    general_use: 'Second-generation antihistamine used to relieve allergy symptoms such as watery eyes, runny nose, sneezing, itching, and hives.',
-    warnings: 'May cause drowsiness. Exercise caution when driving or operating machinery.',
-    cautions: 'Use with caution in elderly individuals and patients with moderate-to-severe renal impairment.',
-    side_effects: 'Drowsiness, dry mouth, tiredness, mild headache.',
-    interaction_warnings: 'Avoid alcohol and central nervous system depressants as they can worsen sedation.',
-    source: 'MedlinePlus Drug Information',
-    source_url: 'https://medlineplus.gov/druginfo/meds/a698026.html'
-  },
-  ors: {
-    name: 'Oral Rehydration Salts (ORS)',
-    general_use: 'Electrolyte and fluid replacement solution recommended by WHO for hydration in acute diarrhea, vomiting, and heat exhaustion.',
-    warnings: 'Must be dissolved in the exact specified volume of clean drinking water (usually 1 packet per 1 litre).',
-    cautions: 'Do not boil after reconstitution. Consume within 24 hours of preparation.',
-    side_effects: 'Safe and well tolerated when mixed in the correct water ratio.',
-    interaction_warnings: 'No significant drug interactions; safe for all age groups.',
-    source: 'WHO Diarrhoeal Disease Guidance',
-    source_url: 'https://www.who.int/news-room/fact-sheets/detail/diarrhoeal-disease'
-  }
-};
+}
 
-// Known common symptoms list to prevent mislabeling symptoms as drugs
-const KNOWN_SYMPTOMS_LIST = [
-  'headache', 'fever', 'cough', 'cold', 'sore throat', 'back pain', 'joint pain',
-  'stomach pain', 'nausea', 'vomiting', 'diarrhea', 'fatigue', 'rash', 'itchy skin',
-  'chest pain', 'shortness of breath', 'dizziness', 'anxiety', 'weakness'
+const CAMPUSCARE_MEDICINES: CampusCareMedicine[] = [
+  {
+    medicine_name: "Paracetamol (Acetaminophen)",
+    generic_name: "acetaminophen",
+    category: "Pain reliever / fever reducer",
+    related_symptoms: [
+      "headache",
+      "fever",
+      "minor aches and pains"
+    ],
+    safety_notes: [
+      "Follow the product label.",
+      "Do not exceed the labeled amount.",
+      "Ask a healthcare professional if you have liver disease or use other acetaminophen-containing products."
+    ],
+    source: "MedlinePlus",
+    source_url: "https://medlineplus.gov/druginfo/meds/a681004.html"
+  },
+  {
+    medicine_name: "Ibuprofen",
+    generic_name: "ibuprofen",
+    category: "NSAID pain reliever",
+    related_symptoms: [
+      "headache",
+      "fever",
+      "minor pain",
+      "muscle aches"
+    ],
+    safety_notes: [
+      "Follow the product label.",
+      "Ask a healthcare professional if you have kidney disease, stomach ulcer/bleeding, take blood thinners, or are pregnant."
+    ],
+    source: "MedlinePlus",
+    source_url: "https://medlineplus.gov/druginfo/meds/a682159.html"
+  },
+  {
+    medicine_name: "Cetirizine",
+    generic_name: "cetirizine",
+    category: "Antihistamine",
+    related_symptoms: [
+      "sneezing",
+      "runny nose",
+      "itchy or watery eyes",
+      "itching"
+    ],
+    safety_notes: [
+      "May cause drowsiness in some people.",
+      "Follow the product label."
+    ],
+    source: "MedlinePlus",
+    source_url: "https://medlineplus.gov/druginfo/meds/a698026.html"
+  },
+  {
+    medicine_name: "Loratadine",
+    generic_name: "loratadine",
+    category: "Antihistamine",
+    related_symptoms: [
+      "sneezing",
+      "runny nose",
+      "itchy or watery eyes",
+      "itching"
+    ],
+    safety_notes: [
+      "Follow the package directions.",
+      "Ask a pharmacist or healthcare professional if you take other medicines."
+    ],
+    source: "MedlinePlus",
+    source_url: "https://medlineplus.gov/druginfo/meds/a698041.html"
+  },
+  {
+    medicine_name: "Dextromethorphan",
+    generic_name: "dextromethorphan",
+    category: "Cough suppressant",
+    related_symptoms: [
+      "cough"
+    ],
+    safety_notes: [
+      "Check combination-product ingredients.",
+      "Follow the package label.",
+      "Ask a healthcare professional about interactions with other medicines."
+    ],
+    source: "MedlinePlus",
+    source_url: "https://medlineplus.gov/druginfo/meds/a682492.html"
+  },
+  {
+    medicine_name: "Calcium Carbonate",
+    generic_name: "calcium carbonate",
+    category: "Antacid",
+    related_symptoms: [
+      "heartburn",
+      "acid indigestion",
+      "upset stomach"
+    ],
+    safety_notes: [
+      "Follow the product label.",
+      "Antacids can interact with some medicines; ask a pharmacist if you take other medicines."
+    ],
+    source: "MedlinePlus",
+    source_url: "https://medlineplus.gov/druginfo/meds/a601032.html"
+  },
+  {
+    medicine_name: "Famotidine",
+    generic_name: "famotidine",
+    category: "Acid reducer",
+    related_symptoms: [
+      "heartburn",
+      "acid-related symptoms"
+    ],
+    safety_notes: [
+      "Follow the product label.",
+      "Seek medical advice if symptoms persist or are severe."
+    ],
+    source: "MedlinePlus",
+    source_url: "https://medlineplus.gov/druginfo/meds/a687011.html"
+  }
 ];
+
+// Helper to determine if a matched medical emergency keyword was negated (e.g. "no sudden explosive", "without shortness of breath")
+function isNegatedPhrase(fullText: string, matchIndex: number): boolean {
+  const preceding = fullText.slice(Math.max(0, matchIndex - 40), matchIndex).toLowerCase();
+  return /\b(no|not|without|denies|denied|none of|none|negative for|neither|never)\b\s*[^.!,;]*$/i.test(preceding);
+}
 
 // Red-flag emergency indicators
 const EMERGENCY_RED_FLAGS = [
   { pattern: /weakness in.*(arm|leg|face|side)/i, reason: 'Sudden limb or facial weakness is a potential stroke warning sign.' },
   { pattern: /slurred speech|difficulty speaking/i, reason: 'Speech impairment is an acute neurological emergency.' },
-  { pattern: /sudden severe headache|worst headache of my life|thunderclap/i, reason: 'Sudden explosive headache requires immediate intracranial evaluation.' },
+  { pattern: /thunderclap(\s+headache)?|worst headache of (my |the )?life|sudden explosive (onset|headache|severe headache)|explosive severe headache/i, reason: 'Sudden explosive or thunderclap headache requires immediate intracranial evaluation.' },
   { pattern: /chest pain|chest pressure|chest tightness|radiating to (left arm|jaw|back)/i, reason: 'Acute chest pain requires immediate cardiac emergency triage.' },
-  { pattern: /shortness of breath|severe breathing difficulty|struggling to breathe/i, reason: 'Acute respiratory distress requires immediate emergency care.' },
+  { pattern: /severe breathing difficulty|struggling to breathe|cannot catch breath|wheezing with distress|severe respiratory distress/i, reason: 'Acute respiratory distress requires immediate emergency care.' },
   { pattern: /loss of consciousness|unconscious|fainting|passed out/i, reason: 'Loss of consciousness is a critical red-flag emergency.' },
   { pattern: /anaphylaxis|throat swelling|severe allergic reaction/i, reason: 'Anaphylaxis requires immediate epinephrine and emergency intervention.' },
   { pattern: /coughing blood|vomiting blood|uncontrolled bleeding/i, reason: 'Acute active hemorrhage requires emergency trauma care.' },
-  { pattern: /seizure|convulsions/i, reason: 'Active seizure requires emergency clinical management.' }
+  { pattern: /active seizure|convulsions/i, reason: 'Active seizure requires emergency clinical management.' }
 ];
+
+function evaluateRedFlags(text: string): string {
+  if (!text) return '';
+  for (const rf of EMERGENCY_RED_FLAGS) {
+    const regex = new RegExp(rf.pattern.source, 'gi');
+    let match: RegExpExecArray | null;
+    while ((match = regex.exec(text)) !== null) {
+      if (!isNegatedPhrase(text, match.index)) {
+        return rf.reason;
+      }
+    }
+  }
+  return '';
+}
 
 function sanitize(str: string): string {
   if (!str) return '';
@@ -304,45 +382,58 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     } = req.body || {};
 
     // ==========================================
-    // 1. MEDICINE SEARCH MODE
+    // 1. MEDICINE SEARCH MODE (campuscare_medicines.json)
     // ==========================================
     if (medicineQuery && typeof medicineQuery === 'string') {
       const qClean = sanitize(medicineQuery).trim();
       const qLower = qClean.toLowerCase();
 
-      // Guard: Do not label a symptom as a drug!
-      const isSymptomWord = KNOWN_SYMPTOMS_LIST.some(s => qLower === s || qLower.includes(s));
-      if (isSymptomWord && !VERIFIED_MEDICINE_DATABASE[qLower]) {
-        return res.status(400).json({
-          error: `"${qClean}" is a medical symptom, not a drug or medication. Please use the Symptom Guidance tool to evaluate this symptom.`
+      // Check if the query matches any symptom in related_symptoms
+      const symptomMatches: CampusCareMedicine[] = [];
+      let detectedSymptomName = '';
+
+      for (const med of CAMPUSCARE_MEDICINES) {
+        for (const sym of med.related_symptoms) {
+          const symLower = sym.toLowerCase();
+          if (qLower.includes(symLower) || symLower.includes(qLower)) {
+            symptomMatches.push(med);
+            if (!detectedSymptomName) detectedSymptomName = sym;
+            break;
+          }
+        }
+      }
+
+      // Check direct medicine matches (name, generic name, category)
+      const directMatches = CAMPUSCARE_MEDICINES.filter(med => {
+        const b = med.medicine_name.toLowerCase();
+        const g = med.generic_name.toLowerCase();
+        const c = med.category.toLowerCase();
+        return b.includes(qLower) || g.includes(qLower) || c.includes(qLower) || qLower.includes(g);
+      });
+
+      if (directMatches.length > 0) {
+        return res.status(200).json({
+          is_symptom: false,
+          medicine_information: directMatches,
+          disclaimer: 'Medicine information is educational and does not replace advice from a doctor or pharmacist. CampusCare does not provide personalized prescriptions.'
         });
       }
 
-      const matchedKey = Object.keys(VERIFIED_MEDICINE_DATABASE).find(k => qLower.includes(k) || k.includes(qLower));
-
-      if (matchedKey) {
-        const medInfo = VERIFIED_MEDICINE_DATABASE[matchedKey];
+      if (symptomMatches.length > 0) {
         return res.status(200).json({
-          medicine_information: [medInfo],
-          disclaimer: 'Medication choice depends on your symptoms, medical history, allergies, current medicines, age, and other clinical factors. Please consult a qualified healthcare professional.'
-        });
-      } else {
-        return res.status(200).json({
-          medicine_information: [
-            {
-              name: qClean,
-              general_use: 'General medication information requires prescription and clinical evaluation.',
-              warnings: 'Always consult a certified medical practitioner or pharmacist before taking any medication. Do not self-medicate.',
-              cautions: 'Use strictly as advised by a qualified healthcare professional.',
-              side_effects: 'Individual side effects vary by patient history and drug formulation.',
-              interaction_warnings: 'Medication interactions depend on active ingredients and co-administered drugs.',
-              source: 'MedlinePlus Drug Information Database',
-              source_url: 'https://medlineplus.gov/druginformation.html'
-            }
-          ],
-          disclaimer: 'Medication choice depends on your symptoms, medical history, allergies, current medicines, age, and other clinical factors. Please consult a qualified healthcare professional.'
+          is_symptom: true,
+          matched_symptom: detectedSymptomName || qClean,
+          medicine_information: symptomMatches,
+          disclaimer: 'Medicine information is educational and does not replace advice from a doctor or pharmacist. A symptom-to-medicine match must never be treated as a diagnosis or personalized prescription.'
         });
       }
+
+      return res.status(200).json({
+        is_symptom: false,
+        medicine_information: [],
+        message: 'No medicine information was found in the current CampusCare medicine dataset. Consult a doctor or pharmacist.',
+        disclaimer: 'Medicine information is educational and does not replace advice from a doctor or pharmacist.'
+      });
     }
 
     // ==========================================
@@ -364,13 +455,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // ==========================================
     // 3. DETERMINISTIC RED-FLAG SAFETY LAYER
     // ==========================================
-    let detectedRedFlagReason = '';
-    for (const rf of EMERGENCY_RED_FLAGS) {
-      if (rf.pattern.test(combinedSymptomText)) {
-        detectedRedFlagReason = rf.reason;
-        break;
-      }
-    }
+    const detectedRedFlagReason = evaluateRedFlags(combinedSymptomText);
 
     if (detectedRedFlagReason || clampedSeverity >= 9) {
       return res.status(200).json({

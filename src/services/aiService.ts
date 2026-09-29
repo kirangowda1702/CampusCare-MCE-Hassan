@@ -12,14 +12,33 @@ function sanitizeInput(input: string): string {
 const EMERGENCY_RED_FLAGS = [
   { pattern: /weakness in.*(arm|leg|face|side)/i, reason: 'Sudden limb or facial weakness is a potential stroke warning sign.' },
   { pattern: /slurred speech|difficulty speaking/i, reason: 'Speech impairment is an acute neurological emergency.' },
-  { pattern: /sudden severe headache|worst headache of my life|thunderclap/i, reason: 'Sudden explosive headache requires immediate intracranial evaluation.' },
+  { pattern: /thunderclap(\s+headache)?|worst headache of (my |the )?life|sudden explosive (onset|headache|severe headache)|explosive severe headache/i, reason: 'Sudden explosive or thunderclap headache requires immediate intracranial evaluation.' },
   { pattern: /chest pain|chest pressure|chest tightness|radiating to (left arm|jaw|back)/i, reason: 'Acute chest pain requires immediate cardiac emergency triage.' },
-  { pattern: /shortness of breath|severe breathing difficulty|struggling to breathe/i, reason: 'Acute respiratory distress requires immediate emergency care.' },
+  { pattern: /severe breathing difficulty|struggling to breathe|cannot catch breath|wheezing with distress|severe respiratory distress/i, reason: 'Acute respiratory distress requires immediate emergency care.' },
   { pattern: /loss of consciousness|unconscious|fainting|passed out/i, reason: 'Loss of consciousness is a critical red-flag emergency.' },
   { pattern: /anaphylaxis|throat swelling|severe allergic reaction/i, reason: 'Anaphylaxis requires immediate emergency intervention.' },
   { pattern: /coughing blood|vomiting blood|uncontrolled bleeding/i, reason: 'Acute active bleeding requires emergency trauma care.' },
-  { pattern: /seizure|convulsions/i, reason: 'Active seizure requires emergency medical care.' }
+  { pattern: /active seizure|convulsions/i, reason: 'Active seizure requires emergency medical care.' }
 ];
+
+function isNegatedPhrase(fullText: string, matchIndex: number): boolean {
+  const preceding = fullText.slice(Math.max(0, matchIndex - 40), matchIndex).toLowerCase();
+  return /\b(no|not|without|denies|denied|none of|none|negative for|neither|never)\b\s*[^.!,;]*$/i.test(preceding);
+}
+
+function evaluateRedFlags(text: string): string {
+  if (!text) return '';
+  for (const rf of EMERGENCY_RED_FLAGS) {
+    const regex = new RegExp(rf.pattern.source, 'gi');
+    let match: RegExpExecArray | null;
+    while ((match = regex.exec(text)) !== null) {
+      if (!isNegatedPhrase(text, match.index)) {
+        return rf.reason;
+      }
+    }
+  }
+  return '';
+}
 
 export const aiService = {
   getProviderStatus(): { isConfigured: boolean; providerName: string; statusLabel: string } {
@@ -46,13 +65,7 @@ export const aiService = {
     const fullEvaluatedText = combinedSymptomText + ' ' + followUpText;
 
     // 1. Immediate Deterministic Red-Flag Safety Check (Before network call)
-    let detectedRedFlagReason = '';
-    for (const rf of EMERGENCY_RED_FLAGS) {
-      if (rf.pattern.test(fullEvaluatedText)) {
-        detectedRedFlagReason = rf.reason;
-        break;
-      }
-    }
+    const detectedRedFlagReason = evaluateRedFlags(fullEvaluatedText);
 
     if (detectedRedFlagReason || clampedSeverity >= 9) {
       return {
