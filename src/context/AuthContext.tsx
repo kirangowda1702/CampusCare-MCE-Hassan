@@ -44,49 +44,57 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     initAuthSession();
 
-    // Listen to real-time auth events from Supabase
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (!isMounted) return;
+    // Listen to real-time auth events from Supabase only when configured
+    let unsubscribe: (() => void) | undefined;
+    if (isSupabaseConfigured) {
+      try {
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+          if (!isMounted) return;
 
-      if (event === 'SIGNED_OUT' || !session) {
-        setUser(null);
-        setIsLoading(false);
-      } else if (session?.user) {
-        try {
-          const { data: profile } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', session.user.id)
-            .maybeSingle();
+          if (event === 'SIGNED_OUT' || !session) {
+            setUser(null);
+            setIsLoading(false);
+          } else if (session?.user) {
+            try {
+              const { data: profile } = await supabase
+                .from('profiles')
+                .select('*')
+                .eq('id', session.user.id)
+                .maybeSingle();
 
-          if (profile && isMounted) {
-            setUser(profile as User);
-          } else if (isMounted) {
-            const meta = session.user.user_metadata || {};
-            setUser({
-              id: session.user.id,
-              email: session.user.email || '',
-              fullName: meta.full_name || meta.name || session.user.email?.split('@')[0] || 'Campus Member',
-              role: meta.role || 'student',
-              createdAt: session.user.created_at || new Date().toISOString(),
-              phone: meta.phone || '+91 98450 12345',
-              doctorId: meta.doctor_id,
-              usn: meta.usn,
-              branch: meta.branch,
-              semester: meta.semester
-            });
+              if (profile && isMounted) {
+                setUser(profile as User);
+              } else if (isMounted) {
+                const meta = session.user.user_metadata || {};
+                setUser({
+                  id: session.user.id,
+                  email: session.user.email || '',
+                  fullName: meta.full_name || meta.name || session.user.email?.split('@')[0] || 'Campus Member',
+                  role: meta.role || 'student',
+                  createdAt: session.user.created_at || new Date().toISOString(),
+                  phone: meta.phone || '+91 98450 12345',
+                  doctorId: meta.doctor_id,
+                  usn: meta.usn,
+                  branch: meta.branch,
+                  semester: meta.semester
+                });
+              }
+            } catch (profileErr) {
+              console.warn('[AuthContext] Profile load on auth event error:', profileErr);
+            } finally {
+              if (isMounted) setIsLoading(false);
+            }
           }
-        } catch (profileErr) {
-          console.warn('[AuthContext] Profile load on auth event error:', profileErr);
-        } finally {
-          if (isMounted) setIsLoading(false);
-        }
+        });
+        unsubscribe = () => subscription?.unsubscribe();
+      } catch (subErr) {
+        console.warn('[AuthContext] Auth subscription error:', subErr);
       }
-    });
+    }
 
     return () => {
       isMounted = false;
-      subscription?.unsubscribe();
+      if (unsubscribe) unsubscribe();
     };
   }, []);
 
