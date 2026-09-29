@@ -331,11 +331,45 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             httpStatus,
             geminiReply: replyText,
             supabaseDiagnostics: {
-              detectedKeys: Object.keys(process.env).filter(k => /supabase|database|url|anon/i.test(k)),
-              hasViteUrl: Boolean(process.env.VITE_SUPABASE_URL),
-              hasSupabaseUrl: Boolean(process.env.SUPABASE_URL),
-              hasViteKey: Boolean(process.env.VITE_SUPABASE_ANON_KEY),
-              hasSupabaseKey: Boolean(process.env.SUPABASE_ANON_KEY)
+              detectedKeys: Object.keys(process.env).filter(k => /supabase|database|url|anon|service_role/i.test(k)),
+              viteUrlInspect: {
+                present: Boolean(process.env.VITE_SUPABASE_URL),
+                length: (process.env.VITE_SUPABASE_URL || '').length,
+                host: (() => { try { return new URL(process.env.VITE_SUPABASE_URL || '').host; } catch { return null; } })()
+              },
+              supabaseUrlInspect: {
+                present: Boolean(process.env.SUPABASE_URL),
+                length: (process.env.SUPABASE_URL || '').length,
+                host: (() => { try { return new URL(process.env.SUPABASE_URL || '').host; } catch { return null; } })()
+              },
+              viteKeyInspect: {
+                present: Boolean(process.env.VITE_SUPABASE_ANON_KEY),
+                length: (process.env.VITE_SUPABASE_ANON_KEY || '').length,
+                jwtPayload: (() => {
+                  try {
+                    const p = (process.env.VITE_SUPABASE_ANON_KEY || '').split('.');
+                    if (p.length === 3) {
+                      const dec = JSON.parse(Buffer.from(p[1], 'base64').toString('utf8'));
+                      return { iss: dec.iss, ref: dec.ref, role: dec.role };
+                    }
+                  } catch {}
+                  return null;
+                })()
+              },
+              serviceRoleKeyInspect: {
+                present: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
+                length: (process.env.SUPABASE_SERVICE_ROLE_KEY || '').length,
+                jwtPayload: (() => {
+                  try {
+                    const p = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').split('.');
+                    if (p.length === 3) {
+                      const dec = JSON.parse(Buffer.from(p[1], 'base64').toString('utf8'));
+                      return { iss: dec.iss, ref: dec.ref, role: dec.role };
+                    }
+                  } catch {}
+                  return null;
+                })()
+              }
             },
             serverTimestamp: new Date().toISOString()
           });
