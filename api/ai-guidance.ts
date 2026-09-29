@@ -58,8 +58,8 @@ const TRUSTED_SOURCES_MAP: Record<string, { name: string; url: string }[]> = {
   ]
 };
 
-// CampusCare Medicine Information Dataset (Source of Truth: campuscare_medicines.json)
-interface CampusCareMedicine {
+// CampusCare Verified Medicines Dataset (Source: campuscare_medicines.json)
+export interface CampusCareMedicineRecord {
   medicine_name: string;
   generic_name: string;
   category: string;
@@ -69,7 +69,7 @@ interface CampusCareMedicine {
   source_url: string;
 }
 
-const CAMPUSCARE_MEDICINES: CampusCareMedicine[] = [
+const CAMPUSCARE_MEDICINES: CampusCareMedicineRecord[] = [
   {
     medicine_name: "Paracetamol (Acetaminophen)",
     generic_name: "acetaminophen",
@@ -151,7 +151,7 @@ const CAMPUSCARE_MEDICINES: CampusCareMedicine[] = [
       "Ask a healthcare professional about interactions with other medicines."
     ],
     source: "MedlinePlus",
-    source_url: "https://medlineplus.gov/druginfo/meds/a682492.html"
+    source_url: "https://medlineplus.gov/druginfo/meds/a682159.html"
   },
   {
     medicine_name: "Calcium Carbonate",
@@ -186,37 +186,49 @@ const CAMPUSCARE_MEDICINES: CampusCareMedicine[] = [
   }
 ];
 
-// Helper to determine if a matched medical emergency keyword was negated (e.g. "no sudden explosive", "without shortness of breath")
-function isNegatedPhrase(fullText: string, matchIndex: number): boolean {
-  const preceding = fullText.slice(Math.max(0, matchIndex - 40), matchIndex).toLowerCase();
-  return /\b(no|not|without|denies|denied|none of|none|negative for|neither|never)\b\s*[^.!,;]*$/i.test(preceding);
-}
+// Known common symptoms list to distinguish symptoms from drugs
+const KNOWN_SYMPTOMS_LIST = [
+  'headache', 'fever', 'cough', 'cold', 'sore throat', 'back pain', 'joint pain',
+  'stomach pain', 'nausea', 'vomiting', 'diarrhea', 'fatigue', 'rash', 'itchy skin',
+  'chest pain', 'shortness of breath', 'dizziness', 'anxiety', 'weakness', 'sneezing',
+  'runny nose', 'itching', 'heartburn', 'acid indigestion', 'upset stomach'
+];
 
 // Red-flag emergency indicators
 const EMERGENCY_RED_FLAGS = [
-  { pattern: /weakness in.*(arm|leg|face|side)/i, reason: 'Sudden limb or facial weakness is a potential stroke warning sign.' },
-  { pattern: /slurred speech|difficulty speaking/i, reason: 'Speech impairment is an acute neurological emergency.' },
-  { pattern: /thunderclap(\s+headache)?|worst headache of (my |the )?life|sudden explosive (onset|headache|severe headache)|explosive severe headache/i, reason: 'Sudden explosive or thunderclap headache requires immediate intracranial evaluation.' },
-  { pattern: /chest pain|chest pressure|chest tightness|radiating to (left arm|jaw|back)/i, reason: 'Acute chest pain requires immediate cardiac emergency triage.' },
-  { pattern: /severe breathing difficulty|struggling to breathe|cannot catch breath|wheezing with distress|severe respiratory distress/i, reason: 'Acute respiratory distress requires immediate emergency care.' },
-  { pattern: /loss of consciousness|unconscious|fainting|passed out/i, reason: 'Loss of consciousness is a critical red-flag emergency.' },
-  { pattern: /anaphylaxis|throat swelling|severe allergic reaction/i, reason: 'Anaphylaxis requires immediate epinephrine and emergency intervention.' },
-  { pattern: /coughing blood|vomiting blood|uncontrolled bleeding/i, reason: 'Acute active hemorrhage requires emergency trauma care.' },
-  { pattern: /active seizure|convulsions/i, reason: 'Active seizure requires emergency clinical management.' }
+  { pattern: /\b(chest pain|pressure in chest|tightness in chest|pain radiating to (?:left arm|jaw|back))\b/i, reason: 'Acute chest pain requires immediate cardiac emergency triage.' },
+  { pattern: /\b(severe breathing difficulty|struggling to breathe|cannot catch breath|shortness of breath|wheezing with significant respiratory distress|wheezing and (?:difficulty|struggling)|acute respiratory distress)\b/i, reason: 'Acute respiratory distress requires immediate emergency care.' },
+  { pattern: /\b(sudden explosive onset|sudden explosive severe headache|sudden explosive headache|thunderclap headache|worst headache of (?:my\s+)?life|explosive thunderclap)\b/i, reason: 'Sudden explosive or thunderclap headache requires urgent neurological evaluation.' },
+  { pattern: /\b(weakness in (?:arm|leg|face|side)|slurred speech|facial droop|difficulty speaking|acute speech change)\b/i, reason: 'Limb weakness or acute speech changes are potential stroke warning signs.' },
+  { pattern: /\b(passed out|loss of consciousness|fainted|unconscious)\b/i, reason: 'Loss of consciousness is a critical red-flag emergency.' },
+  { pattern: /\b(throat swelling|swollen lips|difficulty swallowing|anaphylaxis|severe allergic reaction)\b/i, reason: 'Anaphylaxis requires immediate epinephrine and emergency intervention.' },
+  { pattern: /\b(coughing blood|vomiting blood|uncontrolled bleeding|active hemorrhage)\b/i, reason: 'Acute active hemorrhage requires emergency trauma care.' },
+  { pattern: /\b(active seizure|convulsions)\b/i, reason: 'Active seizure requires emergency clinical management.' }
 ];
 
-function evaluateRedFlags(text: string): string {
-  if (!text) return '';
+function isClauseNegated(fullText: string, matchIndex: number): boolean {
+  const lookback = fullText.slice(Math.max(0, matchIndex - 70), matchIndex).toLowerCase();
+  const clauses = lookback.split(/[,.;:!?|\n]|\bbut\b|\bhowever\b/);
+  const immediateClause = clauses[clauses.length - 1] || '';
+  const negationRegex = /\b(no|not|without|denies|denied|negative for|neither|never|free of|rule out)\b/i;
+  return negationRegex.test(immediateClause);
+}
+
+function evaluateRedFlags(rawText: string): { isEmergency: boolean; reason?: string } {
+  if (!rawText || typeof rawText !== 'string') return { isEmergency: false };
+
   for (const rf of EMERGENCY_RED_FLAGS) {
     const regex = new RegExp(rf.pattern.source, 'gi');
     let match: RegExpExecArray | null;
-    while ((match = regex.exec(text)) !== null) {
-      if (!isNegatedPhrase(text, match.index)) {
-        return rf.reason;
+
+    while ((match = regex.exec(rawText)) !== null) {
+      if (!isClauseNegated(rawText, match.index)) {
+        return { isEmergency: true, reason: rf.reason };
       }
     }
   }
-  return '';
+
+  return { isEmergency: false };
 }
 
 function sanitize(str: string): string {
@@ -318,6 +330,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             availableModels: availableModels.slice(0, 10),
             httpStatus,
             geminiReply: replyText,
+            supabaseDiagnostics: {
+              detectedKeys: Object.keys(process.env).filter(k => /supabase|database|url|anon/i.test(k)),
+              hasViteUrl: Boolean(process.env.VITE_SUPABASE_URL),
+              hasSupabaseUrl: Boolean(process.env.SUPABASE_URL),
+              hasViteKey: Boolean(process.env.VITE_SUPABASE_ANON_KEY),
+              hasSupabaseKey: Boolean(process.env.SUPABASE_ANON_KEY)
+            },
             serverTimestamp: new Date().toISOString()
           });
         } else {
@@ -382,58 +401,65 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     } = req.body || {};
 
     // ==========================================
-    // 1. MEDICINE SEARCH MODE (campuscare_medicines.json)
+    // 1. MEDICINE SEARCH MODE
     // ==========================================
     if (medicineQuery && typeof medicineQuery === 'string') {
       const qClean = sanitize(medicineQuery).trim();
       const qLower = qClean.toLowerCase();
 
-      // Check if the query matches any symptom in related_symptoms
-      const symptomMatches: CampusCareMedicine[] = [];
-      let detectedSymptomName = '';
-
-      for (const med of CAMPUSCARE_MEDICINES) {
-        for (const sym of med.related_symptoms) {
-          const symLower = sym.toLowerCase();
-          if (qLower.includes(symLower) || symLower.includes(qLower)) {
-            symptomMatches.push(med);
-            if (!detectedSymptomName) detectedSymptomName = sym;
-            break;
-          }
-        }
-      }
-
-      // Check direct medicine matches (name, generic name, category)
-      const directMatches = CAMPUSCARE_MEDICINES.filter(med => {
-        const b = med.medicine_name.toLowerCase();
-        const g = med.generic_name.toLowerCase();
-        const c = med.category.toLowerCase();
-        return b.includes(qLower) || g.includes(qLower) || c.includes(qLower) || qLower.includes(g);
+      // Check for direct medicine name or generic name matches
+      const nameMatches = CAMPUSCARE_MEDICINES.filter(m => {
+        const medName = m.medicine_name.toLowerCase();
+        const genName = m.generic_name.toLowerCase();
+        return medName.includes(qLower) || genName.includes(qLower);
       });
 
-      if (directMatches.length > 0) {
+      // Check for symptom / related_symptoms matches
+      const symptomMatches = CAMPUSCARE_MEDICINES.filter(m =>
+        m.related_symptoms.some(rs => {
+          const normRs = rs.toLowerCase();
+          return qLower.includes(normRs) || normRs.includes(qLower);
+        })
+      );
+
+      const isSymptomWord =
+        symptomMatches.length > 0 ||
+        KNOWN_SYMPTOMS_LIST.some(s => qLower === s || qLower.includes(s));
+
+      const matchedList = nameMatches.length > 0 ? nameMatches : symptomMatches;
+
+      if (matchedList.length > 0) {
         return res.status(200).json({
-          is_symptom: false,
-          medicine_information: directMatches,
-          disclaimer: 'Medicine information is educational and does not replace advice from a doctor or pharmacist. CampusCare does not provide personalized prescriptions.'
+          query: qClean,
+          is_symptom: nameMatches.length === 0 && isSymptomWord,
+          medicine_information: matchedList.map(m => ({
+            name: m.medicine_name,
+            generic_name: m.generic_name,
+            category: m.category,
+            related_symptoms: m.related_symptoms,
+            safety_notes: m.safety_notes,
+            general_use: `Category: ${m.category}. Commonly related to: ${m.related_symptoms.join(', ')}.`,
+            cautions: m.safety_notes.join(' '),
+            side_effects: 'Refer to product packaging and packaging insert for complete details.',
+            interaction_warnings: 'Ask a pharmacist or healthcare professional if you take other medications.',
+            warnings: m.safety_notes[0] || 'Follow product label.',
+            source: m.source,
+            source_url: m.source_url
+          })),
+          disclaimer:
+            'Medicine information is educational and does not replace advice from a doctor or pharmacist. Never self-prescribe without clinical evaluation.'
+        });
+      } else {
+        return res.status(200).json({
+          query: qClean,
+          is_symptom: isSymptomWord,
+          medicine_information: [],
+          not_found: true,
+          message: 'No medicine information was found in the current CampusCare medicine dataset.',
+          disclaimer:
+            'Medicine information is educational and does not replace advice from a doctor or pharmacist.'
         });
       }
-
-      if (symptomMatches.length > 0) {
-        return res.status(200).json({
-          is_symptom: true,
-          matched_symptom: detectedSymptomName || qClean,
-          medicine_information: symptomMatches,
-          disclaimer: 'Medicine information is educational and does not replace advice from a doctor or pharmacist. A symptom-to-medicine match must never be treated as a diagnosis or personalized prescription.'
-        });
-      }
-
-      return res.status(200).json({
-        is_symptom: false,
-        medicine_information: [],
-        message: 'No medicine information was found in the current CampusCare medicine dataset. Consult a doctor or pharmacist.',
-        disclaimer: 'Medicine information is educational and does not replace advice from a doctor or pharmacist.'
-      });
     }
 
     // ==========================================
@@ -455,7 +481,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // ==========================================
     // 3. DETERMINISTIC RED-FLAG SAFETY LAYER
     // ==========================================
-    const detectedRedFlagReason = evaluateRedFlags(combinedSymptomText);
+    const followUpText = Object.values(followUpAnswers || {})
+      .flatMap(v => (Array.isArray(v) ? v : [String(v)]))
+      .join(' ')
+      .toLowerCase();
+    const fullEvaluatedText = (combinedSymptomText + ' ' + followUpText).trim();
+
+    const redFlagEvaluation = evaluateRedFlags(fullEvaluatedText);
+    const detectedRedFlagReason = redFlagEvaluation.isEmergency ? redFlagEvaluation.reason : '';
 
     if (detectedRedFlagReason || clampedSeverity >= 9) {
       return res.status(200).json({
@@ -736,7 +769,13 @@ JSON Schema:
         emergency: urgency === 'EMERGENCY',
         disclaimer: 'This tool provides general health guidance and does not replace diagnosis, treatment, or emergency care from a qualified healthcare professional.',
         isRealAI: true,
-        provider: successfulModel || 'Google Gemini'
+        provider: successfulModel || 'Google Gemini',
+        related_medicines: CAMPUSCARE_MEDICINES.filter(m =>
+          m.related_symptoms.some(rs => {
+            const normRs = rs.toLowerCase();
+            return combinedSymptomText.includes(normRs) || normRs.includes(combinedSymptomText);
+          })
+        )
       });
 
     } catch (apiErr: any) {

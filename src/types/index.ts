@@ -438,6 +438,16 @@ export interface PossibleCondition {
   explanation: string;
 }
 
+export interface CampusCareMedicine {
+  medicine_name: string;
+  generic_name: string;
+  category: string;
+  related_symptoms: string[];
+  safety_notes: string[];
+  source: string;
+  source_url: string;
+}
+
 export interface MedicineInfo {
   name: string;
   general_use: string;
@@ -447,6 +457,10 @@ export interface MedicineInfo {
   interaction_warnings: string;
   source: string;
   source_url?: string;
+  generic_name?: string;
+  category?: string;
+  related_symptoms?: string[];
+  safety_notes?: string[];
 }
 
 export interface SymptomGuidanceRequest {
@@ -477,6 +491,7 @@ export interface SymptomGuidanceResponse {
   disclaimer: string;
   isRealAI?: boolean;
   provider?: string;
+  related_medicines?: CampusCareMedicine[];
 }
 
 
