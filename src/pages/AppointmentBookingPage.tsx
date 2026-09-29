@@ -18,6 +18,8 @@ import { doctorAvailabilityService, GeneratedSlot } from '../services/doctorAvai
 import { useAppointments } from '../context/AppointmentContext';
 import { useAuth } from '../context/AuthContext';
 import { ConsultationType, HealthService, Doctor, Appointment } from '../types';
+import { CalendarDatePicker } from '../components/calendar/CalendarDatePicker';
+import { getTodayIST, isDateInPast, formatDateFull, getDayOfWeek } from '../utils/dateUtils';
 
 export const AppointmentBookingPage: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -34,8 +36,8 @@ export const AppointmentBookingPage: React.FC = () => {
   const [step, setStep] = useState(1);
   const [selectedService, setSelectedService] = useState<HealthService | null>(null);
   const [selectedDoctor, setSelectedDoctor] = useState<Doctor | null>(null);
-  const [selectedDate, setSelectedDate] = useState<string>('2026-09-18');
-  const [selectedSlot, setSelectedSlot] = useState<string>('10:00 AM');
+  const [selectedDate, setSelectedDate] = useState<string>(getTodayIST());
+  const [selectedSlot, setSelectedSlot] = useState<string>('');
   const [selectedStartTime, setSelectedStartTime] = useState<string>('10:00');
   const [selectedEndTime, setSelectedEndTime] = useState<string>('10:30');
   const [generatedSlots, setGeneratedSlots] = useState<GeneratedSlot[]>([]);
@@ -88,10 +90,13 @@ export const AppointmentBookingPage: React.FC = () => {
             setSelectedSlot(firstAvailable.slot);
             setSelectedStartTime(firstAvailable.startTime);
             setSelectedEndTime(firstAvailable.endTime);
+          } else {
+            setSelectedSlot('');
           }
         })
         .catch(() => {
           setGeneratedSlots([]);
+          setSelectedSlot('');
         })
         .finally(() => {
           setLoadingSlots(false);
@@ -107,6 +112,12 @@ export const AppointmentBookingPage: React.FC = () => {
     if (step === 2 && !selectedDoctor) {
       alert('Please select a doctor');
       return;
+    }
+    if (step === 3) {
+      if (!selectedDate || isDateInPast(selectedDate)) {
+        alert('Please select a valid future consultation date on the calendar');
+        return;
+      }
     }
     if (step === 4 && !selectedSlot) {
       alert('Please select an available time slot');
@@ -354,23 +365,18 @@ export const AppointmentBookingPage: React.FC = () => {
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-2">Pick Date:</label>
-              <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
-                {['2026-09-18', '2026-09-19', '2026-09-21', '2026-09-22', '2026-09-23'].map(d => (
-                  <button
-                    key={d}
-                    type="button"
-                    onClick={() => setSelectedDate(d)}
-                    className={`p-3 rounded-xl border text-center text-xs font-bold transition-all ${
-                      selectedDate === d
-                        ? 'bg-primary-600 text-white shadow'
-                        : 'border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800'
-                    }`}
-                  >
-                    {d}
-                  </button>
-                ))}
-              </div>
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-2">
+                Select Consultation Date (Full Calendar):
+              </label>
+              <CalendarDatePicker
+                selectedDate={selectedDate}
+                onSelectDate={d => {
+                  setSelectedDate(d);
+                  setSelectedSlot('');
+                }}
+                doctorName={selectedDoctor?.name}
+                doctorAvailableDays={selectedDoctor?.availableDays || selectedDoctor?.availability_days}
+              />
             </div>
           </div>
         )}
@@ -379,10 +385,10 @@ export const AppointmentBookingPage: React.FC = () => {
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-base font-bold text-slate-900 dark:text-white">Step 4: Select Available Time Slot</h3>
-              <span className="text-xs text-primary-600 font-semibold">Database-Backed Availability</span>
+              <span className="text-xs text-primary-600 font-semibold">Real-Time Clinical Schedule</span>
             </div>
             <p className="text-xs text-slate-500">
-              Generated clinical consultation slots for <span className="font-semibold text-slate-700 dark:text-slate-300">{selectedDoctor?.name}</span> on <span className="font-semibold text-slate-700 dark:text-slate-300">{selectedDate}</span>:
+              Available consultation slots for <span className="font-semibold text-slate-700 dark:text-slate-300">{selectedDoctor?.name}</span> on <span className="font-semibold text-slate-700 dark:text-slate-300">{formatDateFull(selectedDate)}</span>:
             </p>
 
             {loadingSlots ? (
@@ -410,7 +416,7 @@ export const AppointmentBookingPage: React.FC = () => {
                         !isAvailable
                           ? 'opacity-40 cursor-not-allowed bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-400 line-through'
                           : isSelected
-                          ? 'bg-primary-600 text-white shadow-md border-primary-600'
+                          ? 'bg-primary-600 text-white shadow-md border-primary-600 ring-2 ring-primary-400'
                           : 'border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200'
                       }`}
                     >
@@ -418,7 +424,7 @@ export const AppointmentBookingPage: React.FC = () => {
                       {slotItem.slot}
                       {!isAvailable && (
                         <span className="block text-[9px] font-normal no-underline text-rose-500 mt-0.5">
-                          Reserved
+                          {slotItem.bookedReason || 'Unavailable'}
                         </span>
                       )}
                     </button>
@@ -426,8 +432,24 @@ export const AppointmentBookingPage: React.FC = () => {
                 })}
               </div>
             ) : (
-              <div className="p-8 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 text-center text-xs text-amber-800 dark:text-amber-200">
-                No active duty slots found for this doctor on the selected date. Please pick a different date above.
+              <div className="p-8 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 text-center text-xs text-amber-800 dark:text-amber-200 space-y-3">
+                <p className="font-semibold text-sm">
+                  No available consultation slots for {selectedDoctor?.name} on {formatDateFull(selectedDate)}.
+                </p>
+                <p className="text-xs text-slate-600 dark:text-slate-400">
+                  {selectedDoctor?.name} holds consultations on:{' '}
+                  <span className="font-semibold text-slate-800 dark:text-slate-200">
+                    {selectedDoctor?.availableDays?.join(', ') || selectedDoctor?.availability_days?.join(', ') || 'Monday–Saturday'}
+                  </span>{' '}
+                  ({selectedDoctor?.availability_time || '10:00 AM–1:00 PM'}).
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setStep(3)}
+                  className="px-4 py-2 rounded-xl bg-primary-600 hover:bg-primary-700 text-white font-bold text-xs shadow inline-flex items-center gap-1.5 transition-colors"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" /> Choose Another Date on Calendar
+                </button>
               </div>
             )}
           </div>
@@ -474,7 +496,7 @@ export const AppointmentBookingPage: React.FC = () => {
               </div>
               <div className="flex justify-between border-b border-slate-200 dark:border-slate-700 pb-2">
                 <span className="text-slate-500">Date & Slot:</span>
-                <span className="font-bold text-slate-900 dark:text-white">{selectedDate} at {selectedSlot}</span>
+                <span className="font-bold text-slate-900 dark:text-white">{formatDateFull(selectedDate)} at {selectedSlot}</span>
               </div>
               <div className="flex justify-between border-b border-slate-200 dark:border-slate-700 pb-2">
                 <span className="text-slate-500">Mode:</span>
@@ -508,7 +530,7 @@ export const AppointmentBookingPage: React.FC = () => {
 
             <div className="max-w-md mx-auto p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-800 text-left text-xs space-y-2">
               <div><strong>Doctor:</strong> {confirmedAppointment.doctorName}</div>
-              <div><strong>Date & Time:</strong> {confirmedAppointment.appointmentDate} at {confirmedAppointment.timeSlot}</div>
+              <div><strong>Date & Time:</strong> {formatDateFull(confirmedAppointment.appointmentDate)} at {confirmedAppointment.timeSlot}</div>
               <div><strong>Consultation Type:</strong> {confirmedAppointment.consultationType}</div>
             </div>
 

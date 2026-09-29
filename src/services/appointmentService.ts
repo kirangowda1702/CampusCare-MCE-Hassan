@@ -2,6 +2,7 @@ import { supabase, isSupabaseConfigured } from './supabase';
 import { Appointment, AppointmentStatus } from '../types';
 import { mockAppointments } from '../data/appointments';
 import { notificationService } from './notificationService';
+import { isDateInPast, isDateToday, isTimeSlotInPastToday } from '../utils/dateUtils';
 
 const STORAGE_KEY = 'campuscare_appointments';
 let inMemoryAppointments: Appointment[] = [...mockAppointments];
@@ -95,7 +96,17 @@ export const appointmentService = {
   },
 
   async createAppointment(appointment: Omit<Appointment, 'id' | 'bookingId' | 'createdAt'>): Promise<Appointment> {
-    // 1. Double booking prevention check
+    // 1. Past date validation
+    if (!appointment.appointmentDate || isDateInPast(appointment.appointmentDate)) {
+      throw new Error('Cannot book an appointment for a past date. Please select a valid future date.');
+    }
+
+    // 2. Past time slot validation for today in IST
+    if (isDateToday(appointment.appointmentDate) && appointment.startTime && isTimeSlotInPastToday(appointment.startTime)) {
+      throw new Error('Selected time slot has already passed for today. Please select a future time slot.');
+    }
+
+    // 3. Double booking prevention check
     const existing = await this.getAppointments();
     const isDoubleBooked = existing.some(
       a =>
@@ -107,7 +118,7 @@ export const appointmentService = {
     );
 
     if (isDoubleBooked) {
-      throw new Error(`The time slot ${appointment.timeSlot} on ${appointment.appointmentDate} is already reserved for this doctor.`);
+      throw new Error('Time slot no longer available. Please select another slot.');
     }
 
     const randomNum = Math.floor(1000 + Math.random() * 9000);

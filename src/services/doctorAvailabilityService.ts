@@ -1,6 +1,8 @@
 import { supabase, isSupabaseConfigured } from './supabase';
 import { DoctorAvailability } from '../types';
 import { appointmentService } from './appointmentService';
+import { getDayOfWeek, isDateInPast, isDateToday, isTimeSlotInPastToday } from '../utils/dateUtils';
+import { mockDoctors } from '../data/doctors';
 
 const STORAGE_KEY = 'campuscare_doctor_availability';
 
@@ -217,21 +219,42 @@ export const doctorAvailabilityService = {
   },
 
   async getAvailableSlots(doctorId: string, dateStr: string): Promise<GeneratedSlot[]> {
-    const rules = await this.getAvailabilities(doctorId);
-    const selectedDate = new Date(dateStr);
-    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    const currentDayName = dayNames[selectedDate.getDay()];
+    if (!dateStr || isDateInPast(dateStr)) {
+      return [];
+    }
 
-    const rule = rules.find(r => r.dayOfWeek === currentDayName || r.dayOfWeek === 'Daily') || rules[0];
+    const currentDayName = getDayOfWeek(dateStr);
+    if (!currentDayName) {
+      return [];
+    }
+
+    // 1. Verify doctor duty days from doctor profile
+    const doctorRecord = mockDoctors.find(d => d.id === doctorId || d.doctorId === doctorId);
+    if (doctorRecord) {
+      const activeDays = (doctorRecord.availableDays || doctorRecord.availability_days || []).map(d => d.toLowerCase());
+      if (activeDays.length > 0 && !activeDays.includes(currentDayName.toLowerCase()) && !activeDays.includes('daily')) {
+        return [];
+      }
+    }
+
+    // 2. Fetch matching availability schedule rule for this doctor and day
+    const rules = await this.getAvailabilities(doctorId);
+    const rule = rules.find(r => {
+      if (!r.isActive) return false;
+      if (r.dayOfWeek === 'Daily') return true;
+      const days = r.dayOfWeek.split(',').map(d => d.trim().toLowerCase());
+      return days.includes(currentDayName.toLowerCase());
+    });
 
     if (!rule || !rule.isActive) {
       return [];
     }
 
+    // 3. Query existing booked appointments for double booking check
     const appointments = await appointmentService.getAppointments();
     const bookedSlots = appointments.filter(
       a =>
-        a.doctorId === doctorId &&
+        (a.doctorId === doctorId || a.doctorId === doctorRecord?.doctorId || a.doctorId === doctorRecord?.id) &&
         a.appointmentDate === dateStr &&
         a.status !== 'cancelled' &&
         a.status !== 'rejected'
@@ -254,6 +277,8 @@ export const doctorAvailabilityService = {
       breakEndMinutes = beh * 60 + bem;
     }
 
+    const isToday = isDateToday(dateStr);
+
     while (currentMinutes + duration <= endMinutes) {
       const slotEndMinutes = currentMinutes + duration;
       const isInBreak =
@@ -275,16 +300,28 @@ export const doctorAvailabilityService = {
         const displayH = slotStartH % 12 === 0 ? 12 : slotStartH % 12;
         const displayLabel = String(displayH).padStart(2, '0') + ':' + String(slotStartM).padStart(2, '0') + ' ' + period;
 
+        // Double-booking check
         const isBooked = bookedSlots.some(
           a => a.timeSlot === displayLabel || a.startTime === start24
         );
+
+        // Past-slot check for today in IST
+        const isPast = isToday && isTimeSlotInPastToday(start24);
+
+        const isAvailable = !isBooked && !isPast;
+        let bookedReason: string | undefined;
+        if (isBooked) {
+          bookedReason = 'Slot already reserved';
+        } else if (isPast) {
+          bookedReason = 'Time slot has passed';
+        }
 
         slots.push({
           slot: displayLabel,
           startTime: start24,
           endTime: end24,
-          isAvailable: !isBooked,
-          bookedReason: isBooked ? 'Slot already reserved' : undefined
+          isAvailable,
+          bookedReason
         });
       }
 
