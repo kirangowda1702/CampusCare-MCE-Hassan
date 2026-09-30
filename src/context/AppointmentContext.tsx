@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Appointment, AppointmentStatus, ConsultationType } from '../types';
 import { mockAppointments } from '../data/appointments';
-import { appointmentService } from '../services/appointmentService';
+import { appointmentService, isAppointmentForDoctor } from '../services/appointmentService';
 import { appointmentReminderService } from '../services/appointmentReminderService';
 
 interface AppointmentContextType {
@@ -34,7 +34,7 @@ interface AppointmentContextType {
   cancelAppointment: (id: string) => Promise<void>;
   rescheduleAppointment: (id: string, newDate: string, newSlot: string) => Promise<void>;
   getUserAppointments: (userId: string) => Appointment[];
-  getDoctorAppointments: (doctorId: string) => Appointment[];
+  getDoctorAppointments: (doctorIdOrUser: string | any) => Appointment[];
   refreshAppointments: () => Promise<void>;
 }
 
@@ -76,9 +76,23 @@ export const AppointmentProvider: React.FC<{ children: React.ReactNode }> = ({ c
     // Start background appointment reminder daemon (checks 15-30m pre-reminders and 0m start notifications)
     const stopReminderDaemon = appointmentReminderService.startDaemon(30000);
 
+    // Cross-tab synchronization via local storage events
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'campuscare_appointments' && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          if (Array.isArray(parsed)) {
+            setAppointments(parsed);
+          }
+        } catch {}
+      }
+    };
+    window.addEventListener('storage', handleStorageChange);
+
     return () => {
       unsubscribe();
       stopReminderDaemon();
+      window.removeEventListener('storage', handleStorageChange);
     };
   }, []);
 
@@ -146,8 +160,11 @@ export const AppointmentProvider: React.FC<{ children: React.ReactNode }> = ({ c
     return appointments.filter(a => a.patientId === userId);
   };
 
-  const getDoctorAppointments = (doctorId: string) => {
-    return appointments.filter(a => a.doctorId === doctorId || doctorId === 'doc-1');
+  const getDoctorAppointments = (doctorIdOrUser: string | any) => {
+    if (typeof doctorIdOrUser === 'object' && doctorIdOrUser !== null) {
+      return appointments.filter(a => isAppointmentForDoctor(a, doctorIdOrUser));
+    }
+    return appointments.filter(a => isAppointmentForDoctor(a, { doctorId: doctorIdOrUser, id: doctorIdOrUser }));
   };
 
   return (

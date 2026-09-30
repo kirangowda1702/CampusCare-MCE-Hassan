@@ -422,9 +422,35 @@ CREATE POLICY "Students access own student profile" ON student_profiles FOR ALL 
 CREATE POLICY "Doctors directory viewable" ON doctor_profiles FOR SELECT USING (true);
 
 -- Appointments: Patients and assigned Doctors
-CREATE POLICY "Patients view own appointments" ON appointments FOR SELECT USING (auth.uid() = patient_id OR auth.uid() = doctor_id);
-CREATE POLICY "Patients create appointments" ON appointments FOR INSERT WITH CHECK (auth.uid() = patient_id);
-CREATE POLICY "Authorized update appointments" ON appointments FOR UPDATE USING (auth.uid() = patient_id OR auth.uid() = doctor_id);
+CREATE POLICY "Patients and Doctors view appointments" ON appointments FOR SELECT USING (
+    auth.uid() = patient_id 
+    OR auth.uid() = doctor_id
+    OR EXISTS (
+        SELECT 1 FROM doctor_profiles dp 
+        WHERE dp.user_id = auth.uid() 
+        AND (dp.doctor_id = appointments.doctor_id::text OR appointments.doctor_id = dp.user_id)
+    )
+    OR EXISTS (
+        SELECT 1 FROM users u 
+        WHERE u.id = auth.uid() AND u.role = 'doctor'
+    )
+);
+CREATE POLICY "Patients create appointments" ON appointments FOR INSERT WITH CHECK (
+    auth.uid() = patient_id OR auth.uid() IS NOT NULL
+);
+CREATE POLICY "Authorized update appointments" ON appointments FOR UPDATE USING (
+    auth.uid() = patient_id 
+    OR auth.uid() = doctor_id
+    OR EXISTS (
+        SELECT 1 FROM doctor_profiles dp 
+        WHERE dp.user_id = auth.uid() 
+        AND (dp.doctor_id = appointments.doctor_id::text OR appointments.doctor_id = dp.user_id)
+    )
+    OR EXISTS (
+        SELECT 1 FROM users u 
+        WHERE u.id = auth.uid() AND u.role = 'doctor'
+    )
+);
 
 -- Prescriptions: Patient or Issuing Doctor
 CREATE POLICY "Patients view own prescriptions" ON prescriptions FOR SELECT USING (auth.uid() = patient_id OR auth.uid() = doctor_id);

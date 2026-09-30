@@ -25,11 +25,13 @@ import { AppointmentCard } from '../components/cards/AppointmentCard';
 import { PrescriptionModal } from '../features/prescriptions/PrescriptionModal';
 import { doctorAvailabilityService } from '../services/doctorAvailabilityService';
 import { DoctorAvailability } from '../types';
+import { getTodayIST } from '../utils/dateUtils';
+import { isAppointmentForDoctor } from '../services/appointmentService';
 
 export const DoctorDashboard: React.FC = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const { appointments, updateStatus } = useAppointments();
+  const { appointments, updateStatus, refreshAppointments } = useAppointments();
   const [isAvailable, setIsAvailable] = useState(true);
   const [activeTab, setActiveTab] = useState<'pending' | 'confirmed' | 'today' | 'upcoming' | 'completed' | 'cancelled' | 'availability'>('pending');
   const [selectedPatientForRx, setSelectedPatientForRx] = useState<{ name: string; id: string; aptId: string } | null>(null);
@@ -52,6 +54,10 @@ export const DoctorDashboard: React.FC = () => {
   const [savedSuccess, setSavedSuccess] = useState(false);
 
   useEffect(() => {
+    refreshAppointments().catch(() => {});
+  }, [user]);
+
+  useEffect(() => {
     const docId = user?.doctorId || user?.id || 'doc-1';
     doctorAvailabilityService.getAvailabilities(docId).then(rules => {
       if (rules && rules.length > 0) {
@@ -60,36 +66,17 @@ export const DoctorDashboard: React.FC = () => {
     });
   }, [user]);
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = getTodayIST();
 
-  const doctorAppointments = appointments.filter(a => {
-    if (!user) return true;
-    const targetDocId = (user.doctorId || user.id || '').trim().toUpperCase();
-    const aptDocId = (a.doctorId || '').trim().toUpperCase();
-
-    // 1. Authoritative Doctor ID match (e.g. DOC001 or DOC002)
-    if (user.doctorId && aptDocId === user.doctorId.trim().toUpperCase()) return true;
-    if (user.id && (aptDocId === user.id.trim().toUpperCase() || a.doctorId === user.id)) return true;
-    if (targetDocId && aptDocId === targetDocId) return true;
-
-    // 2. Doctor Name fallback match
-    if (user.fullName && a.doctorName) {
-      const cleanUser = user.fullName.replace(/^(Dr\.|Dr)\s+/i, '').trim().toLowerCase();
-      const cleanDoc = a.doctorName.replace(/^(Dr\.|Dr)\s+/i, '').trim().toLowerCase();
-      if (cleanUser.length >= 3 && cleanDoc.length >= 3 && (cleanUser === cleanDoc || cleanUser.includes(cleanDoc) || cleanDoc.includes(cleanUser))) {
-        return true;
-      }
-    }
-    return false;
-  });
+  const doctorAppointments = appointments.filter(a => isAppointmentForDoctor(a, user));
 
   const pendingAppointments = doctorAppointments.filter(a => a.status === 'pending');
   const confirmedAppointments = doctorAppointments.filter(a => a.status === 'confirmed');
   const todayAppointments = doctorAppointments.filter(
-    a => a.appointmentDate === todayStr && (a.status === 'confirmed' || a.status === 'in_progress')
+    a => a.appointmentDate === todayStr && a.status !== 'cancelled' && a.status !== 'rejected'
   );
   const upcomingAppointments = doctorAppointments.filter(
-    a => a.appointmentDate > todayStr && a.status === 'confirmed'
+    a => a.appointmentDate > todayStr && a.status !== 'cancelled' && a.status !== 'rejected'
   );
   const completedAppointments = doctorAppointments.filter(a => a.status === 'completed');
   const cancelledAppointments = doctorAppointments.filter(

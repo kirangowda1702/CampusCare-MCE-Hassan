@@ -56,24 +56,69 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setIsLoading(false);
           } else if (session?.user) {
             try {
-              const { data: profile } = await supabase
-                .from('profiles')
-                .select('*')
-                .eq('id', session.user.id)
-                .maybeSingle();
+              let doctorId: string | undefined = undefined;
+              let role: UserRole = 'student';
+              let fullName = session.user.email?.split('@')[0] || 'Campus Member';
+              let specialization: string | undefined = undefined;
 
-              if (profile && isMounted) {
-                setUser(profile as User);
-              } else if (isMounted) {
+              try {
+                const { data: docProf } = await supabase
+                  .from('doctor_profiles')
+                  .select('*')
+                  .eq('user_id', session.user.id)
+                  .maybeSingle();
+
+                if (docProf) {
+                  doctorId = docProf.doctor_id;
+                  role = 'doctor';
+                  fullName = docProf.doctor_name || fullName;
+                  specialization = docProf.specialization;
+                }
+              } catch (docErr) {
+                console.warn('[AuthContext] doctor_profiles query warning:', docErr);
+              }
+
+              try {
+                const { data: dbUser } = await supabase
+                  .from('users')
+                  .select('*')
+                  .eq('id', session.user.id)
+                  .maybeSingle();
+
+                if (dbUser) {
+                  role = (dbUser.role as UserRole) || role;
+                  fullName = dbUser.full_name || fullName;
+                }
+              } catch (uErr) {
+                console.warn('[AuthContext] users query warning:', uErr);
+              }
+
+              const emailLower = (session.user.email || '').toLowerCase();
+              if (!doctorId) {
+                if (emailLower.includes('dr.kiran') || emailLower.includes('dr.kirangowda')) {
+                  doctorId = 'DOC001';
+                  role = 'doctor';
+                  fullName = 'Dr. Kiran Gowda';
+                  specialization = 'General Medicine';
+                } else if (emailLower.includes('dr.madan') || emailLower.includes('dr.madansk')) {
+                  doctorId = 'DOC002';
+                  role = 'doctor';
+                  fullName = 'Dr. Madan S K';
+                  specialization = 'General Medicine';
+                }
+              }
+
+              if (isMounted) {
                 const meta = session.user.user_metadata || {};
                 setUser({
                   id: session.user.id,
                   email: session.user.email || '',
-                  fullName: meta.full_name || meta.name || session.user.email?.split('@')[0] || 'Campus Member',
-                  role: meta.role || 'student',
+                  fullName: meta.full_name || meta.name || fullName,
+                  role: (meta.role as UserRole) || role,
                   createdAt: session.user.created_at || new Date().toISOString(),
                   phone: meta.phone || '+91 98450 12345',
-                  doctorId: meta.doctor_id,
+                  doctorId: meta.doctor_id || doctorId,
+                  specialization: specialization || meta.specialization,
                   usn: meta.usn,
                   branch: meta.branch,
                   semester: meta.semester

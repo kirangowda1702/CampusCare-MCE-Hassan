@@ -2,7 +2,7 @@ import { supabase, isSupabaseConfigured } from './supabase';
 import { Appointment, AppointmentStatus } from '../types';
 import { mockAppointments } from '../data/appointments';
 import { notificationService, getEquivalentUserIds } from './notificationService';
-import { isDateInPast, isDateToday, isTimeSlotInPastToday } from '../utils/dateUtils';
+import { isDateInPast, isDateToday, isTimeSlotInPastToday, getTodayIST } from '../utils/dateUtils';
 
 const STORAGE_KEY = 'campuscare_appointments';
 let inMemoryAppointments: Appointment[] = [...mockAppointments];
@@ -25,7 +25,123 @@ function setLocalItem(key: string, value: string): void {
   }
 }
 
-function normalizeAppointment(d: any): Appointment {
+// Check for valid UUID format
+export function isValidUuid(str?: string | null): boolean {
+  if (!str) return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
+}
+
+// Master mapping between doctor IDs, UUIDs, and profiles
+export const DOCTOR_ID_MAP: Record<string, { doctorId: string; userUuid: string; doctorName: string }> = {
+  'DOC001': {
+    doctorId: 'DOC001',
+    userUuid: 'd0000001-0000-0000-0000-000000000001',
+    doctorName: 'Dr. Kiran Gowda'
+  },
+  'usr-doctor-kiran': {
+    doctorId: 'DOC001',
+    userUuid: 'd0000001-0000-0000-0000-000000000001',
+    doctorName: 'Dr. Kiran Gowda'
+  },
+  'd0000001-0000-0000-0000-000000000001': {
+    doctorId: 'DOC001',
+    userUuid: 'd0000001-0000-0000-0000-000000000001',
+    doctorName: 'Dr. Kiran Gowda'
+  },
+  'DOC002': {
+    doctorId: 'DOC002',
+    userUuid: 'd0000002-0000-0000-0000-000000000002',
+    doctorName: 'Dr. Madan S K'
+  },
+  'usr-doctor-madan': {
+    doctorId: 'DOC002',
+    userUuid: 'd0000002-0000-0000-0000-000000000002',
+    doctorName: 'Dr. Madan S K'
+  },
+  'd0000002-0000-0000-0000-000000000002': {
+    doctorId: 'DOC002',
+    userUuid: 'd0000002-0000-0000-0000-000000000002',
+    doctorName: 'Dr. Madan S K'
+  }
+};
+
+/**
+ * Universal matcher that checks if an appointment is assigned to a specific doctor.
+ * Matches across doctorId (DOC001), user.id (UUID), doctor username, and aliases.
+ */
+export function isAppointmentForDoctor(
+  appointment: Appointment,
+  user: { doctorId?: string; id?: string; email?: string; fullName?: string } | null
+): boolean {
+  if (!user) return true;
+
+  const aptDocId = (appointment.doctorId || '').trim().toUpperCase();
+  const userDocId = (user.doctorId || '').trim().toUpperCase();
+  const userId = (user.id || '').trim().toUpperCase();
+
+  // 1. Direct doctorId match (e.g. DOC001 === DOC001)
+  if (userDocId && (aptDocId === userDocId || aptDocId.includes(userDocId))) return true;
+
+  // 2. Direct user.id match
+  if (userId && (aptDocId === userId || appointment.doctorId === user.id)) return true;
+
+  // 3. Known doctor accounts mapping (Dr. Kiran Gowda / DOC001)
+  const emailLower = (user.email || '').toLowerCase();
+  const isKiranDoctor =
+    userDocId === 'DOC001' ||
+    userId === 'USR-DOCTOR-KIRAN' ||
+    userId === 'D0000001-0000-0000-0000-000000000001' ||
+    emailLower.includes('kiran') ||
+    (user.fullName || '').toLowerCase().includes('kiran');
+
+  if (isKiranDoctor) {
+    if (
+      aptDocId === 'DOC001' ||
+      aptDocId === 'USR-DOCTOR-KIRAN' ||
+      aptDocId === 'D0000001-0000-0000-0000-000000000001' ||
+      aptDocId === 'DOC-1'
+    ) {
+      return true;
+    }
+    const cleanDocName = (appointment.doctorName || '').toLowerCase();
+    if (cleanDocName.includes('kiran')) return true;
+  }
+
+  // 4. Known doctor accounts mapping (Dr. Madan S K / DOC002)
+  const isMadanDoctor =
+    userDocId === 'DOC002' ||
+    userId === 'USR-DOCTOR-MADAN' ||
+    userId === 'D0000002-0000-0000-0000-000000000002' ||
+    emailLower.includes('madan') ||
+    (user.fullName || '').toLowerCase().includes('madan');
+
+  if (isMadanDoctor) {
+    if (
+      aptDocId === 'DOC002' ||
+      aptDocId === 'USR-DOCTOR-MADAN' ||
+      aptDocId === 'D0000002-0000-0000-0000-000000000002'
+    ) {
+      return true;
+    }
+    const cleanDocName = (appointment.doctorName || '').toLowerCase();
+    if (cleanDocName.includes('madan')) return true;
+  }
+
+  // 5. Name-based alphanumeric match
+  if (user.fullName && appointment.doctorName) {
+    const cleanUser = user.fullName.toLowerCase().replace(/^dr[\.\s]+/i, '').replace(/[^a-z0-9]/g, '');
+    const cleanDoc = appointment.doctorName.toLowerCase().replace(/^dr[\.\s]+/i, '').replace(/[^a-z0-9]/g, '');
+    if (cleanUser.length >= 3 && cleanDoc.length >= 3) {
+      if (cleanUser === cleanDoc || cleanUser.includes(cleanDoc) || cleanDoc.includes(cleanUser)) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+export function normalizeAppointment(d: any): Appointment {
   const rawStatus = (d.status || 'pending').toString().toLowerCase();
   let status: AppointmentStatus = 'pending';
   if (rawStatus === 'confirmed' || rawStatus === 'accepted') status = 'confirmed';
@@ -34,6 +150,36 @@ function normalizeAppointment(d: any): Appointment {
   else if (rawStatus === 'completed') status = 'completed';
   else if (rawStatus === 'cancelled') status = 'cancelled';
   else if (rawStatus === 'rescheduled') status = 'rescheduled';
+
+  // Normalize doctor ID and name
+  const rawDocId = (d.doctor_id || d.doctorId || 'DOC001').toString();
+  let doctorId = rawDocId;
+  let doctorName = d.doctor_name || d.doctorName;
+  let doctorSpecialization = d.doctor_specialization || d.doctorSpecialization || 'General Medicine';
+
+  if (
+    rawDocId === 'd0000001-0000-0000-0000-000000000001' ||
+    rawDocId.toUpperCase() === 'DOC001' ||
+    rawDocId === 'usr-doctor-kiran' ||
+    rawDocId.toLowerCase().includes('kiran')
+  ) {
+    doctorId = 'DOC001';
+    doctorName = doctorName || 'Dr. Kiran Gowda';
+  } else if (
+    rawDocId === 'd0000002-0000-0000-0000-000000000002' ||
+    rawDocId.toUpperCase() === 'DOC002' ||
+    rawDocId === 'usr-doctor-madan' ||
+    rawDocId.toLowerCase().includes('madan')
+  ) {
+    doctorId = 'DOC002';
+    doctorName = doctorName || 'Dr. Madan S K';
+  } else if (!doctorName) {
+    doctorName = 'Dr. Kiran Gowda';
+  }
+
+  // Ensure clean YYYY-MM-DD date representation
+  const rawDate = (d.appointment_date || d.appointmentDate || d.date || getTodayIST()).toString();
+  const appointmentDate = rawDate.slice(0, 10);
 
   return {
     id: d.id || d.appointment_id || ('apt-' + Date.now()),
@@ -44,18 +190,18 @@ function normalizeAppointment(d: any): Appointment {
     patientEmail: d.patientEmail || d.patient_email || 'student@mcehassan.ac.in',
     patientPhone: d.patientPhone || d.patient_phone || '+91 98765 43210',
     patientUSNorEmpId: d.patientUSNorEmpId || d.patient_usn_or_emp_id || d.usn || d.employee_id,
-    doctorId: (d.doctorId || d.doctor_id || 'DOC001').toString(),
-    doctorName: d.doctorName || d.doctor_name || 'Dr. Kiran Gowda',
-    doctorSpecialization: d.doctorSpecialization || d.doctor_specialization || 'General Medicine',
+    doctorId,
+    doctorName,
+    doctorSpecialization,
     doctorAvatar: d.doctorAvatar || d.doctor_avatar || d.avatar_url,
     serviceId: d.serviceId || d.service_id || 'srv-1',
     serviceName: d.serviceName || d.service_name || 'General Consultation',
-    appointmentDate: d.appointmentDate || d.appointment_date || d.date || new Date().toISOString().split('T')[0],
+    appointmentDate,
     timeSlot: d.timeSlot || d.time_slot || d.time || '10:00 AM',
     startTime: d.startTime || d.start_time,
     endTime: d.endTime || d.end_time,
-    consultationType: (d.consultationType || d.consultation_type || 'video') as any,
-    reason: d.reason || '',
+    consultationType: (d.consultationType || d.consultation_type || 'video').toString().toLowerCase() as any,
+    reason: d.reason || 'General Consultation',
     symptoms: Array.isArray(d.symptoms) ? d.symptoms : (typeof d.symptoms === 'string' ? JSON.parse(d.symptoms || '[]') : []),
     status,
     notes: d.notes,
@@ -67,31 +213,68 @@ function normalizeAppointment(d: any): Appointment {
 
 export const appointmentService = {
   async getAppointments(): Promise<Appointment[]> {
+    let supabaseAppointments: Appointment[] = [];
+
     if (isSupabaseConfigured) {
       try {
         const { data, error } = await supabase
           .from('appointments')
           .select('*')
           .order('created_at', { ascending: false });
+
         if (!error && data && data.length > 0) {
-          const normalized = data.map(normalizeAppointment);
-          inMemoryAppointments = normalized;
-          return normalized;
+          supabaseAppointments = data.map(normalizeAppointment);
         }
       } catch (err) {
         console.warn('Supabase fetch appointments error:', err);
       }
     }
+
+    // Merge with in-memory / local storage records
     const saved = getLocalItem(STORAGE_KEY);
+    let localList: Appointment[] = [];
     if (saved) {
       try { 
         const parsed = JSON.parse(saved);
-        inMemoryAppointments = Array.isArray(parsed) ? parsed.map(normalizeAppointment) : mockAppointments;
-        return inMemoryAppointments; 
-      } catch (e) { 
-        return inMemoryAppointments; 
-      }
+        if (Array.isArray(parsed)) {
+          localList = parsed.map(normalizeAppointment);
+        }
+      } catch (e) {}
     }
+
+    // Combine records uniquely by bookingId and id
+    const appointmentMap = new Map<string, Appointment>();
+
+    // 1. Add Supabase records
+    supabaseAppointments.forEach(apt => {
+      appointmentMap.set(apt.bookingId, apt);
+      appointmentMap.set(apt.id, apt);
+    });
+
+    // 2. Add local storage records (keeps newly booked or offline appointments)
+    localList.forEach(apt => {
+      if (!appointmentMap.has(apt.bookingId) && !appointmentMap.has(apt.id)) {
+        appointmentMap.set(apt.bookingId, apt);
+      }
+    });
+
+    // 3. Fallback to inMemoryAppointments if empty
+    inMemoryAppointments.forEach(apt => {
+      if (!appointmentMap.has(apt.bookingId) && !appointmentMap.has(apt.id)) {
+        appointmentMap.set(apt.bookingId, apt);
+      }
+    });
+
+    const combined = Array.from(new Set(appointmentMap.values())).sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+
+    if (combined.length > 0) {
+      inMemoryAppointments = combined;
+      setLocalItem(STORAGE_KEY, JSON.stringify(combined));
+      return combined;
+    }
+
     return inMemoryAppointments;
   },
 
@@ -122,8 +305,12 @@ export const appointmentService = {
     }
 
     const randomNum = Math.floor(1000 + Math.random() * 9000);
+    const appointmentId = (typeof crypto !== 'undefined' && crypto.randomUUID) 
+      ? crypto.randomUUID() 
+      : ('apt-' + Date.now());
+
     const newApt: Appointment = {
-      id: 'apt-' + Date.now(),
+      id: appointmentId,
       bookingId: `MCE-APT-2026-${randomNum}`,
       ...appointment,
       status: appointment.status ? (appointment.status.toLowerCase() as AppointmentStatus) : 'pending',
@@ -133,57 +320,49 @@ export const appointmentService = {
 
     if (isSupabaseConfigured) {
       try {
-        const payload = {
-          id: newApt.id,
-          appointment_id: newApt.id,
+        // Resolve doctor ID (UUID or authoritative ID)
+        let resolvedDoctorId = newApt.doctorId;
+        if (newApt.doctorId === 'DOC001') {
+          resolvedDoctorId = 'd0000001-0000-0000-0000-000000000001';
+        } else if (newApt.doctorId === 'DOC002') {
+          resolvedDoctorId = 'd0000002-0000-0000-0000-000000000002';
+        }
+
+        const dbPayload: any = {
           booking_id: newApt.bookingId,
-          bookingId: newApt.bookingId,
-          student_id: newApt.patientId,
-          patient_id: newApt.patientId,
-          patientId: newApt.patientId,
-          patient_name: newApt.patientName,
-          patientName: newApt.patientName,
-          patient_role: newApt.patientRole,
-          patient_email: newApt.patientEmail,
-          patient_phone: newApt.patientPhone,
-          patient_usn_or_emp_id: newApt.patientUSNorEmpId,
-          doctor_id: newApt.doctorId,
-          doctorId: newApt.doctorId,
-          doctor_name: newApt.doctorName,
-          doctorName: newApt.doctorName,
-          doctor_specialization: newApt.doctorSpecialization,
-          doctor_avatar: newApt.doctorAvatar,
-          service_id: newApt.serviceId,
-          service_name: newApt.serviceName,
           appointment_date: newApt.appointmentDate,
-          date: newApt.appointmentDate,
           time_slot: newApt.timeSlot,
-          time: newApt.timeSlot,
-          start_time: newApt.startTime,
-          end_time: newApt.endTime,
-          consultation_type: newApt.consultationType,
-          reason: newApt.reason,
-          symptoms: newApt.symptoms,
-          status: newApt.status,
-          created_at: newApt.createdAt,
-          updated_at: newApt.updatedAt
+          start_time: newApt.startTime || null,
+          end_time: newApt.endTime || null,
+          consultation_type: (newApt.consultationType || 'video').toLowerCase(),
+          reason: newApt.reason || 'General Consultation',
+          symptoms: Array.isArray(newApt.symptoms) ? newApt.symptoms : [],
+          status: (newApt.status || 'pending').toLowerCase()
         };
 
-        const { error } = await supabase.from('appointments').insert([payload]);
+        if (isValidUuid(newApt.id)) {
+          dbPayload.id = newApt.id;
+        }
+
+        if (isValidUuid(resolvedDoctorId)) {
+          dbPayload.doctor_id = resolvedDoctorId;
+        }
+
+        if (isValidUuid(newApt.patientId)) {
+          dbPayload.patient_id = newApt.patientId;
+        }
+
+        const { error } = await supabase.from('appointments').insert([dbPayload]);
         if (error) {
-          // Fallback minimal insert
+          console.warn('[appointmentService] Primary insert returned warning, trying raw fallback:', error);
+          // Fallback: minimal insert without strict foreign keys if needed
           await supabase.from('appointments').insert([{
-            id: newApt.id,
             booking_id: newApt.bookingId,
-            doctor_id: newApt.doctorId,
-            patient_id: newApt.patientId,
             appointment_date: newApt.appointmentDate,
             time_slot: newApt.timeSlot,
-            consultation_type: newApt.consultationType,
-            status: newApt.status,
-            reason: newApt.reason,
-            doctor_name: newApt.doctorName,
-            patient_name: newApt.patientName
+            consultation_type: (newApt.consultationType || 'video').toLowerCase(),
+            status: (newApt.status || 'pending').toLowerCase(),
+            reason: newApt.reason
           }]);
         }
       } catch (err) {
@@ -191,8 +370,9 @@ export const appointmentService = {
       }
     }
 
-    inMemoryAppointments = [newApt, ...inMemoryAppointments.filter(a => a.id !== newApt.id)];
+    inMemoryAppointments = [newApt, ...inMemoryAppointments.filter(a => a.id !== newApt.id && a.bookingId !== newApt.bookingId)];
     setLocalItem(STORAGE_KEY, JSON.stringify(inMemoryAppointments));
+    notifyLocalListeners();
     notifyLocalListeners();
 
     // Trigger Immediate Notifications for patient & doctor (Item 1 & Item 5)
