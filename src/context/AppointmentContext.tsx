@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Appointment, AppointmentStatus, ConsultationType } from '../types';
 import { mockAppointments } from '../data/appointments';
 import { appointmentService } from '../services/appointmentService';
+import { appointmentReminderService } from '../services/appointmentReminderService';
 
 interface AppointmentContextType {
   appointments: Appointment[];
@@ -61,15 +62,23 @@ export const AppointmentProvider: React.FC<{ children: React.ReactNode }> = ({ c
   };
 
   useEffect(() => {
-    refreshAppointments();
+    refreshAppointments().then(() => {
+      appointmentReminderService.checkUpcomingAppointments().catch(() => {});
+    });
 
     // Subscribe to real-time updates (Supabase Realtime + local broadcasts)
     const unsubscribe = appointmentService.subscribeToAppointments(() => {
-      refreshAppointments();
+      refreshAppointments().then(() => {
+        appointmentReminderService.checkUpcomingAppointments().catch(() => {});
+      });
     });
+
+    // Start background appointment reminder daemon (checks 15-30m pre-reminders and 0m start notifications)
+    const stopReminderDaemon = appointmentReminderService.startDaemon(30000);
 
     return () => {
       unsubscribe();
+      stopReminderDaemon();
     };
   }, []);
 

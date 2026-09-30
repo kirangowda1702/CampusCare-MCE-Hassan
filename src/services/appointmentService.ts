@@ -1,7 +1,7 @@
 import { supabase, isSupabaseConfigured } from './supabase';
 import { Appointment, AppointmentStatus } from '../types';
 import { mockAppointments } from '../data/appointments';
-import { notificationService } from './notificationService';
+import { notificationService, getEquivalentUserIds } from './notificationService';
 import { isDateInPast, isDateToday, isTimeSlotInPastToday } from '../utils/dateUtils';
 
 const STORAGE_KEY = 'campuscare_appointments';
@@ -195,23 +195,35 @@ export const appointmentService = {
     setLocalItem(STORAGE_KEY, JSON.stringify(inMemoryAppointments));
     notifyLocalListeners();
 
-    // Trigger Notification for patient & doctor
+    // Trigger Immediate Notifications for patient & doctor (Item 1 & Item 5)
     try {
+      const docName = newApt.doctorName.startsWith('Dr.') || newApt.doctorName.startsWith('Dr ')
+        ? newApt.doctorName
+        : `Dr. ${newApt.doctorName}`;
+
+      // 1. Notification to Student
       await notificationService.notifyAppointmentEvent({
         userId: newApt.patientId,
         title: 'Appointment Request Submitted',
-        message: `Your consultation request for ${newApt.doctorName} on ${newApt.appointmentDate} at ${newApt.timeSlot} has been created (ID: ${newApt.bookingId}).`,
+        message: `Your consultation request for ${docName} on ${newApt.appointmentDate} at ${newApt.timeSlot} has been created (Booking ID: ${newApt.bookingId}).`,
         type: 'appointment',
         link: `/appointments/${newApt.id}`
       });
-      await notificationService.notifyAppointmentEvent({
-        userId: newApt.doctorId,
-        title: 'New Appointment Request',
-        message: `New appointment request from ${newApt.patientName} (${newApt.bookingId})`,
-        type: 'appointment',
-        link: `/appointments/${newApt.id}`
-      });
-    } catch (e) {}
+
+      // 2. Notification to Doctor (sent to doctorId and any linked doctor user account)
+      const doctorTargets = getEquivalentUserIds(newApt.doctorId);
+      for (const targetDocId of doctorTargets) {
+        await notificationService.notifyAppointmentEvent({
+          userId: targetDocId,
+          title: 'New Appointment Request',
+          message: `New appointment request from student ${newApt.patientName} for ${newApt.appointmentDate} at ${newApt.timeSlot} (Booking ID: ${newApt.bookingId}).`,
+          type: 'appointment',
+          link: `/appointments/${newApt.id}`
+        });
+      }
+    } catch (e) {
+      console.warn('[appointmentService] Error sending booking notifications:', e);
+    }
 
     return newApt;
   },
@@ -243,38 +255,115 @@ export const appointmentService = {
     setLocalItem(STORAGE_KEY, JSON.stringify(inMemoryAppointments));
     notifyLocalListeners();
 
-    // Send notifications based on status change
+    // Send notifications based on status change (Item 2, 4, 5)
     if (target) {
       const docName = target.doctorName.startsWith('Dr.') || target.doctorName.startsWith('Dr ')
         ? target.doctorName
         : `Dr. ${target.doctorName}`;
 
-      let statusTitle = `Appointment ${status.toUpperCase()}`;
-      let statusMsg = `Your appointment (${target.bookingId}) with ${docName} on ${target.appointmentDate} is now marked as ${status}.`;
-
-      if (status === 'confirmed') {
-        statusTitle = 'Appointment Confirmed';
-        statusMsg = `Your appointment with ${docName} has been confirmed.`;
-      } else if (status === 'rejected') {
-        statusTitle = 'Appointment Rejected';
-        statusMsg = 'Your appointment request was rejected.';
-      } else if (status === 'in_progress') {
-        statusTitle = 'Consultation Started';
-        statusMsg = `${docName} has started the consultation session. Click to join video room.`;
-      } else if (status === 'completed') {
-        statusTitle = 'Consultation Completed';
-        statusMsg = `Your consultation with ${docName} has ended. Review your prescription and medical records.`;
-      }
+      const doctorTargets = getEquivalentUserIds(target.doctorId);
 
       try {
-        await notificationService.notifyAppointmentEvent({
-          userId: target.patientId,
-          title: statusTitle,
-          message: statusMsg,
-          type: 'appointment',
-          link: `/appointments/${target.id}`
-        });
-      } catch (e) {}
+        if (status === 'confirmed') {
+          // Student receives confirmation notification (Item 2 & 5)
+          await notificationService.notifyAppointmentEvent({
+            userId: target.patientId,
+            title: 'Appointment Confirmed',
+            message: `Your appointment with ${docName} on ${target.appointmentDate} at ${target.timeSlot} has been confirmed (Booking ID: ${target.bookingId}).`,
+            type: 'appointment',
+            link: `/appointments/${target.id}`
+          });
+
+          // Doctor also receives confirmation audit log (Item 5)
+          for (const targetDocId of doctorTargets) {
+            await notificationService.notifyAppointmentEvent({
+              userId: targetDocId,
+              title: 'Appointment Confirmed',
+              message: `You confirmed the appointment with student ${target.patientName} on ${target.appointmentDate} at ${target.timeSlot} (Booking ID: ${target.bookingId}).`,
+              type: 'appointment',
+              link: `/appointments/${target.id}`
+            });
+          }
+        } else if (status === 'rejected') {
+          // Student receives decline notification (Item 5)
+          await notificationService.notifyAppointmentEvent({
+            userId: target.patientId,
+            title: 'Appointment Declined',
+            message: `Your appointment request with ${docName} on ${target.appointmentDate} at ${target.timeSlot} could not be accepted (Booking ID: ${target.bookingId}).`,
+            type: 'appointment',
+            link: `/appointments/${target.id}`
+          });
+
+          // Doctor confirmation
+          for (const targetDocId of doctorTargets) {
+            await notificationService.notifyAppointmentEvent({
+              userId: targetDocId,
+              title: 'Appointment Request Declined',
+              message: `You declined the appointment request from student ${target.patientName} on ${target.appointmentDate} at ${target.timeSlot} (Booking ID: ${target.bookingId}).`,
+              type: 'appointment',
+              link: `/appointments/${target.id}`
+            });
+          }
+        } else if (status === 'in_progress') {
+          // Consultation start notification to BOTH student and doctor (Item 4 & 5)
+          await notificationService.notifyAppointmentEvent({
+            userId: target.patientId,
+            title: 'Consultation Started',
+            message: `${docName} has started the consultation session for ${target.appointmentDate} at ${target.timeSlot} (Booking ID: ${target.bookingId}). Click to join video room.`,
+            type: 'appointment',
+            link: `/consultation/${target.id}`
+          });
+
+          for (const targetDocId of doctorTargets) {
+            await notificationService.notifyAppointmentEvent({
+              userId: targetDocId,
+              title: 'Consultation Session Active',
+              message: `Consultation session with patient ${target.patientName} for ${target.appointmentDate} at ${target.timeSlot} (Booking ID: ${target.bookingId}) is active. Click to open video room.`,
+              type: 'appointment',
+              link: `/consultation/${target.id}`
+            });
+          }
+        } else if (status === 'completed') {
+          // Consultation completed notification
+          await notificationService.notifyAppointmentEvent({
+            userId: target.patientId,
+            title: 'Consultation Completed',
+            message: `Your consultation with ${docName} on ${target.appointmentDate} at ${target.timeSlot} (Booking ID: ${target.bookingId}) has ended. Review your prescription and medical records.`,
+            type: 'appointment',
+            link: `/appointments/${target.id}`
+          });
+
+          for (const targetDocId of doctorTargets) {
+            await notificationService.notifyAppointmentEvent({
+              userId: targetDocId,
+              title: 'Consultation Completed',
+              message: `Consultation with student ${target.patientName} on ${target.appointmentDate} at ${target.timeSlot} (Booking ID: ${target.bookingId}) has been finalized.`,
+              type: 'appointment',
+              link: `/appointments/${target.id}`
+            });
+          }
+        } else if (status === 'cancelled') {
+          await notificationService.notifyAppointmentEvent({
+            userId: target.patientId,
+            title: 'Appointment Cancelled',
+            message: `Your appointment with ${docName} on ${target.appointmentDate} at ${target.timeSlot} (Booking ID: ${target.bookingId}) was cancelled.`,
+            type: 'appointment',
+            link: `/appointments/${target.id}`
+          });
+
+          for (const targetDocId of doctorTargets) {
+            await notificationService.notifyAppointmentEvent({
+              userId: targetDocId,
+              title: 'Appointment Cancelled',
+              message: `Appointment with student ${target.patientName} on ${target.appointmentDate} at ${target.timeSlot} (Booking ID: ${target.bookingId}) was cancelled.`,
+              type: 'appointment',
+              link: `/appointments/${target.id}`
+            });
+          }
+        }
+      } catch (e) {
+        console.warn('[appointmentService] Error dispatching status change notification:', e);
+      }
     }
   },
 
@@ -318,15 +407,35 @@ export const appointmentService = {
     notifyLocalListeners();
 
     if (target) {
+      const docName = target.doctorName.startsWith('Dr.') || target.doctorName.startsWith('Dr ')
+        ? target.doctorName
+        : `Dr. ${target.doctorName}`;
+
+      const doctorTargets = getEquivalentUserIds(target.doctorId);
+
       try {
+        // Student notification
         await notificationService.notifyAppointmentEvent({
           userId: target.patientId,
           title: 'Appointment Rescheduled',
-          message: `Your appointment with ${target.doctorName} has been moved to ${newDate} at ${newSlot}.`,
+          message: `Your appointment with ${docName} (Booking ID: ${target.bookingId}) has been rescheduled to ${newDate} at ${newSlot}.`,
           type: 'appointment',
           link: `/appointments/${target.id}`
         });
-      } catch (e) {}
+
+        // Doctor notification
+        for (const targetDocId of doctorTargets) {
+          await notificationService.notifyAppointmentEvent({
+            userId: targetDocId,
+            title: 'Appointment Rescheduled',
+            message: `Appointment with student ${target.patientName} (Booking ID: ${target.bookingId}) has been rescheduled to ${newDate} at ${newSlot}.`,
+            type: 'appointment',
+            link: `/appointments/${target.id}`
+          });
+        }
+      } catch (e) {
+        console.warn('[appointmentService] Error dispatching reschedule notifications:', e);
+      }
     }
   },
 

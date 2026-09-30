@@ -1,29 +1,38 @@
 import React, { useState, useEffect } from 'react';
-import { mockNotifications } from '../data/notifications';
+import { useAuth } from '../context/AuthContext';
 import { notificationService } from '../services/notificationService';
 import { Bell, CheckCheck, Calendar, Pill, ShieldAlert } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { NotificationItem } from '../types';
 
 export const NotificationsPage: React.FC = () => {
+  const { user } = useAuth();
   const [filter, setFilter] = useState<'all' | 'unread' | 'appointment' | 'reminder'>('all');
-  const [notifications, setNotifications] = useState<NotificationItem[]>(mockNotifications);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
 
   useEffect(() => {
-    notificationService.getNotifications().then(data => {
-      if (data && data.length > 0) {
+    notificationService.getNotifications(user?.id).then(data => {
+      if (data) {
         setNotifications(data);
       }
     });
-  }, []);
+
+    const unsubscribe = notificationService.subscribeToNotifications(user?.id, (newNotif) => {
+      setNotifications(prev => [newNotif, ...prev.filter(n => n.id !== newNotif.id)]);
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [user?.id]);
 
   const handleMarkAllRead = () => {
     setNotifications(notifications.map(n => ({ ...n, isRead: true })));
-    notificationService.markAllAsRead().catch(() => {});
+    notificationService.markAllAsRead(user?.id).catch(() => {});
   };
 
   const handleMarkOneRead = (id: string) => {
-    setNotifications(notifications.map(n => n.id === id ? { ...n, isRead: true } : n));
+    setNotifications(notifications.map(n => (n.id === id ? { ...n, isRead: true } : n)));
     notificationService.markAsRead(id).catch(() => {});
   };
 

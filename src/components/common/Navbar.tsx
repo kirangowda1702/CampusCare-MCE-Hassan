@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import {
   HeartPulse,
@@ -23,8 +23,8 @@ import {
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import { useEmergency } from '../../context/EmergencyContext';
-import { mockNotifications } from '../../data/notifications';
-import { UserRole } from '../../types';
+import { notificationService } from '../../services/notificationService';
+import { NotificationItem, UserRole } from '../../types';
 
 export const Navbar: React.FC = () => {
   const { user, role, logout, loginAsRole, isAuthenticated } = useAuth();
@@ -33,10 +33,29 @@ export const Navbar: React.FC = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   const [isRoleMenuOpen, setIsRoleMenuOpen] = useState(false);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const location = useLocation();
   const navigate = useNavigate();
 
-  const unreadCount = mockNotifications.filter(n => !n.isRead).length;
+  useEffect(() => {
+    const fetchNotifs = () => {
+      notificationService.getNotifications(user?.id).then(data => {
+        if (data) setNotifications(data);
+      });
+    };
+
+    fetchNotifs();
+
+    const unsubscribe = notificationService.subscribeToNotifications(user?.id, (newNotif) => {
+      setNotifications(prev => [newNotif, ...prev.filter(n => n.id !== newNotif.id)]);
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [user?.id]);
+
+  const unreadCount = notifications.filter(n => !n.isRead).length;
 
   const getDashboardPath = () => {
     if (!role) return '/login';
@@ -158,19 +177,38 @@ export const Navbar: React.FC = () => {
                     </Link>
                   </div>
                   <div className="max-h-72 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800">
-                    {mockNotifications.slice(0, 4).map(n => (
-                      <Link
-                        key={n.id}
-                        to={n.link || '/notifications'}
-                        onClick={() => setIsNotifOpen(false)}
-                        className="p-3 hover:bg-slate-50 dark:hover:bg-slate-800/60 block transition-colors text-xs"
-                      >
-                        <div className="font-semibold text-slate-800 dark:text-slate-200">{n.title}</div>
-                        <div className="text-slate-500 dark:text-slate-400 text-[11px] line-clamp-1 mt-0.5">
-                          {n.message}
-                        </div>
-                      </Link>
-                    ))}
+                    {notifications.length === 0 ? (
+                      <div className="p-4 text-center text-xs text-slate-400">
+                        No notifications yet
+                      </div>
+                    ) : (
+                      notifications.slice(0, 5).map(n => (
+                        <Link
+                          key={n.id}
+                          to={n.link || '/notifications'}
+                          onClick={() => {
+                            setIsNotifOpen(false);
+                            notificationService.markAsRead(n.id);
+                            setNotifications(prev =>
+                              prev.map(item => (item.id === n.id ? { ...item, isRead: true } : item))
+                            );
+                          }}
+                          className={`p-3 hover:bg-slate-50 dark:hover:bg-slate-800/60 block transition-colors text-xs ${
+                            !n.isRead ? 'bg-primary-50/50 dark:bg-primary-950/30' : ''
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="font-semibold text-slate-800 dark:text-slate-200">{n.title}</div>
+                            {!n.isRead && (
+                              <span className="w-1.5 h-1.5 rounded-full bg-primary-600 flex-shrink-0" />
+                            )}
+                          </div>
+                          <div className="text-slate-500 dark:text-slate-400 text-[11px] line-clamp-2 mt-0.5">
+                            {n.message}
+                          </div>
+                        </Link>
+                      ))
+                    )}
                   </div>
                 </div>
               )}
