@@ -127,10 +127,19 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({
           {isDoctorView && isConfirmed && onStartConsultation && (
             <button
               onClick={() => onStartConsultation(appointment.id)}
-              className="px-3 py-1.5 rounded-lg bg-primary-600 text-white text-xs font-semibold hover:bg-primary-700 transition-colors shadow flex items-center gap-1"
+              className="px-3.5 py-1.5 rounded-xl bg-primary-600 text-white text-xs font-semibold hover:bg-primary-700 transition-colors shadow flex items-center gap-1.5 animate-pulse-subtle"
             >
-              <Video className="w-3.5 h-3.5" /> Start Consult
+              <Video className="w-3.5 h-3.5" /> Start Video Consult
             </button>
+          )}
+
+          {isDoctorView && (isConfirmed || isInProgress) && !onStartConsultation && isVideo && (
+            <Link
+              to={`/consultation/${appointment.id}`}
+              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-primary-600 hover:bg-primary-700 text-white text-xs font-semibold shadow transition-all animate-pulse-subtle"
+            >
+              <Video className="w-3.5 h-3.5" /> Join Video Consultation
+            </Link>
           )}
 
           {isDoctorView && isInProgress && onComplete && (
@@ -142,8 +151,8 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({
             </button>
           )}
 
-          {/* Student / Patient Actions */}
-          {(isConfirmed || isInProgress) && isVideo && (
+          {/* Student / Patient Video Action */}
+          {!isDoctorView && (isConfirmed || isInProgress) && isVideo && (
             <Link
               to={`/consultation/${appointment.id}`}
               className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-primary-600 hover:bg-primary-700 text-white text-xs font-semibold shadow transition-all animate-pulse-subtle"

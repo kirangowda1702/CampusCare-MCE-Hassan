@@ -168,7 +168,7 @@ async function runTests() {
       doctorSpecialization: 'Senior Physician & Sports Medicine Specialist',
       serviceId: 'sports-medicine',
       serviceName: 'Sports Medicine & Ortho',
-      appointmentDate: '2026-10-05',
+      appointmentDate: '2026-10-20',
       timeSlot: '11:00 AM',
       startTime: '11:00',
       endTime: '11:30',

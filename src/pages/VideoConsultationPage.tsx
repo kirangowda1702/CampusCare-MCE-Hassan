@@ -5,6 +5,8 @@ import { useAuth } from '../context/AuthContext';
 import { VideoRoom } from '../features/consultation/VideoRoom';
 import { Lock, ArrowLeft, AlertCircle } from 'lucide-react';
 
+import { isAppointmentForDoctor } from '../services/appointmentService';
+
 export const VideoConsultationPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const { getAppointmentById } = useAppointments();
@@ -32,12 +34,12 @@ export const VideoConsultationPage: React.FC = () => {
   }
 
   // Access Control Guard: Student can join only own appointment, Doctor can join only assigned appointment
-  const isStudentOwner = (role === 'student' || !role) && (user?.id === appointment.patientId || user?.email === appointment.patientEmail);
-  const isAssignedDoctor = role === 'doctor' && (
-    !user?.doctorId || 
-    user?.doctorId === appointment.doctorId || 
-    user?.id === appointment.doctorId
+  const isStudentOwner = (role === 'student' || !role) && (
+    (user?.id && user.id === appointment.patientId) || 
+    (user?.email && user.email.toLowerCase() === appointment.patientEmail?.toLowerCase()) ||
+    (user?.usn && user.usn === appointment.patientUSNorEmpId)
   );
+  const isAssignedDoctor = (role === 'doctor') && isAppointmentForDoctor(appointment, user);
   const isAdmin = role === 'admin';
 
   const isAuthorized = isStudentOwner || isAssignedDoctor || isAdmin;

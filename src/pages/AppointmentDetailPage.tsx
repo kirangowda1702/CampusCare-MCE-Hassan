@@ -1,13 +1,16 @@
 import React from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useAppointments } from '../context/AppointmentContext';
-import { Video, ArrowLeft } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import { Video, ArrowLeft, Lock } from 'lucide-react';
 import { StatusBadge } from '../components/common/StatusBadge';
+import { isAppointmentForDoctor } from '../services/appointmentService';
 
 export const AppointmentDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { getAppointmentById, cancelAppointment } = useAppointments();
+  const { user, role } = useAuth();
 
   const appointment = getAppointmentById(id || '');
 
@@ -17,6 +20,31 @@ export const AppointmentDetailPage: React.FC = () => {
         <h2 className="text-xl font-bold">Appointment Not Found</h2>
         <Link to="/appointments" className="text-xs text-primary-600 font-bold hover:underline">
           Return to appointments list
+        </Link>
+      </div>
+    );
+  }
+
+  // Authorization Guard: Only patient, assigned doctor, or admin may access
+  const isPatient = (user?.id && user.id === appointment.patientId) ||
+    (user?.email && appointment.patientEmail?.toLowerCase() === user.email.toLowerCase()) ||
+    (user?.usn && appointment.patientUSNorEmpId === user.usn);
+  const isDoctor = isAppointmentForDoctor(appointment, user);
+  const isAdmin = role === 'admin';
+
+  if (!isPatient && !isDoctor && !isAdmin) {
+    return (
+      <div className="max-w-xl mx-auto p-8 rounded-3xl bg-white dark:bg-slate-900 border border-rose-200 dark:border-rose-900 text-center space-y-4 my-12 shadow-sm">
+        <Lock className="w-12 h-12 text-rose-500 mx-auto" />
+        <h2 className="text-xl font-bold text-slate-900 dark:text-white">Access Denied: Appointment Private</h2>
+        <p className="text-xs text-slate-500">
+          You are not authorized to view this appointment. Consultations are confidential between the patient and attending doctor.
+        </p>
+        <Link
+          to="/appointments"
+          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary-600 text-white font-bold text-xs"
+        >
+          <ArrowLeft className="w-4 h-4" /> Go to My Appointments
         </Link>
       </div>
     );

@@ -4,17 +4,37 @@ import { useAppointments } from '../context/AppointmentContext';
 import { useAuth } from '../context/AuthContext';
 import { AppointmentCard } from '../components/cards/AppointmentCard';
 import { Calendar, Plus, Search } from 'lucide-react';
+import { isAppointmentForDoctor } from '../services/appointmentService';
+import { getTodayIST } from '../utils/dateUtils';
 
 export const AppointmentListPage: React.FC = () => {
-  const { appointments, cancelAppointment, updateStatus } = useAppointments();
-  const { role } = useAuth();
+  const { appointments, cancelAppointment, updateStatus, refreshAppointments } = useAppointments();
+  const { user, role } = useAuth();
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  React.useEffect(() => {
+    refreshAppointments().catch(() => {});
+  }, [user]);
+
+  const todayStr = getTodayIST();
 
   const isDoctor = role === 'doctor';
-  const filtered = appointments.filter(a => {
+  const isAdmin = role === 'admin';
+
+  // Security & Identity Guard: Only show appointments for the logged-in user
+  const userAppointments = appointments.filter(a => {
+    if (isAdmin) return true;
+    if (isDoctor) return isAppointmentForDoctor(a, user);
+    if (!user) return false;
+    return (
+      a.patientId === user.id ||
+      (user.email && a.patientEmail?.toLowerCase() === user.email.toLowerCase()) ||
+      (user.usn && a.patientUSNorEmpId === user.usn)
+    );
+  });
+
+  const filtered = userAppointments.filter(a => {
     if (filterStatus === 'today') {
       if (a.appointmentDate !== todayStr || (a.status === 'cancelled' || a.status === 'rejected')) return false;
     } else if (filterStatus === 'upcoming') {

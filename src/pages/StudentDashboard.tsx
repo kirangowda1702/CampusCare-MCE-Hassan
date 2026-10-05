@@ -27,12 +27,25 @@ import { MedicalRecordCard } from '../components/cards/MedicalRecordCard';
 
 export const StudentDashboard: React.FC = () => {
   const { user } = useAuth();
-  const { appointments, cancelAppointment } = useAppointments();
+  const { appointments, cancelAppointment, refreshAppointments } = useAppointments();
   const { reminders, toggleReminderStatus, prescriptions, records } = useMedical();
   const { setIsEmergencyModalOpen } = useEmergency();
 
-  const userAppointments = appointments.filter(a => a.patientRole === 'student' || a.patientId === user?.id);
-  const upcomingApt = userAppointments.find(a => a.status === 'confirmed' || a.status === 'pending');
+  React.useEffect(() => {
+    refreshAppointments().catch(() => {});
+  }, [user]);
+
+  const userAppointments = appointments.filter(a => {
+    if (!user) return false;
+    return (
+      a.patientId === user.id ||
+      (user.email && a.patientEmail?.toLowerCase() === user.email.toLowerCase()) ||
+      (user.usn && a.patientUSNorEmpId === user.usn)
+    );
+  });
+  const upcomingApt = userAppointments.find(a => a.status === 'confirmed') ||
+                      userAppointments.find(a => a.status === 'pending') ||
+                      userAppointments[0];
   const userPrescriptions = prescriptions.slice(0, 2);
   const recentRecords = records.slice(0, 2);
 

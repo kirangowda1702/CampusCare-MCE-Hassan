@@ -522,32 +522,36 @@ export const AppointmentBookingPage: React.FC = () => {
             </div>
 
             <div>
-              <h3 className="text-2xl font-extrabold text-slate-900 dark:text-white">Appointment Confirmed!</h3>
+              <span className="inline-block px-3 py-1 rounded-full bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 font-bold text-xs uppercase tracking-wider mb-2">
+                Status: Pending Doctor Confirmation
+              </span>
+              <h3 className="text-2xl font-extrabold text-slate-900 dark:text-white">Appointment Request Submitted!</h3>
               <p className="text-xs text-slate-500 mt-1">
-                Your consultation booking ID is <span className="font-mono font-bold text-primary-600">{confirmedAppointment.bookingId}</span>
+                Your consultation booking ID is <span className="font-mono font-bold text-primary-600">{confirmedAppointment.bookingId}</span>. The request has been sent to {confirmedAppointment.doctorName}.
               </p>
             </div>
 
             <div className="max-w-md mx-auto p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-800 text-left text-xs space-y-2">
               <div><strong>Doctor:</strong> {confirmedAppointment.doctorName}</div>
               <div><strong>Date & Time:</strong> {formatDateFull(confirmedAppointment.appointmentDate)} at {confirmedAppointment.timeSlot}</div>
-              <div><strong>Consultation Type:</strong> {confirmedAppointment.consultationType}</div>
+              <div><strong>Consultation Type:</strong> <span className="capitalize font-semibold">{confirmedAppointment.consultationType}</span></div>
+              <div className="text-slate-500 dark:text-slate-400 text-[11px] pt-1">
+                You will receive an in-app notification once the doctor accepts your appointment request.
+              </div>
             </div>
 
             <div className="flex flex-wrap items-center justify-center gap-3 pt-3">
-              {confirmedAppointment.consultationType === 'video' && (
-                <Link
-                  to={`/consultation/${confirmedAppointment.id}`}
-                  className="px-6 py-2.5 rounded-xl bg-primary-600 hover:bg-primary-700 text-white font-bold text-xs shadow flex items-center gap-2"
-                >
-                  <Video className="w-4 h-4" /> Open Teleconsultation Room
-                </Link>
-              )}
               <Link
                 to="/appointments"
+                className="px-6 py-2.5 rounded-xl bg-primary-600 hover:bg-primary-700 text-white font-bold text-xs shadow flex items-center gap-2"
+              >
+                <Calendar className="w-4 h-4" /> View My Appointments
+              </Link>
+              <Link
+                to="/student/dashboard"
                 className="px-5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-semibold hover:bg-slate-100 dark:hover:bg-slate-800"
               >
-                View All My Appointments
+                Go to Dashboard
               </Link>
             </div>
           </div>
