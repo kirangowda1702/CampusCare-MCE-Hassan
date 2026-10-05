@@ -54,6 +54,7 @@ export const VideoRoom: React.FC<VideoRoomProps> = ({ appointment }) => {
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const screenStreamRef = useRef<MediaStream | null>(null);
+  const remoteStreamRef = useRef<MediaStream | null>(null);
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const signalingRef = useRef<RealtimeSignalingChannel | null>(null);
   const iceCandidatesQueue = useRef<RTCIceCandidateInit[]>([]);
@@ -135,8 +136,14 @@ export const VideoRoom: React.FC<VideoRoomProps> = ({ appointment }) => {
   const startLocalMedia = async (): Promise<MediaStream | null> => {
     try {
       setMediaError(null);
-      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-        const stream = await navigator.mediaDevices.getUserMedia({
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        setMediaError('MediaDevices API not available in this browser or environment (requires HTTPS/localhost).');
+        return null;
+      }
+
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
           video: {
             width: { ideal: 1280 },
             height: { ideal: 720 },
@@ -144,16 +151,38 @@ export const VideoRoom: React.FC<VideoRoomProps> = ({ appointment }) => {
           },
           audio: true
         });
-        streamRef.current = stream;
-        if (localVideoRef.current) {
-          localVideoRef.current.srcObject = stream;
+      } catch (mediaErr: any) {
+        console.warn('[WebRTC] Full audio+video getUserMedia failed, attempting fallback:', mediaErr);
+        // Fallback to video-only if microphone is absent or blocked
+        if (
+          mediaErr.name === 'NotFoundError' || 
+          mediaErr.name === 'DevicesNotFoundError' || 
+          mediaErr.name === 'NotAllowedError'
+        ) {
+          try {
+            stream = await navigator.mediaDevices.getUserMedia({ video: true });
+          } catch (vidErr: any) {
+            throw vidErr;
+          }
+        } else {
+          throw mediaErr;
         }
-        setHasRealStream(true);
-        return stream;
-      } else {
-        setMediaError('MediaDevices API not available in this browser or environment.');
-        return null;
       }
+
+      streamRef.current = stream;
+      setHasRealStream(true);
+
+      // Immediately assign stream to local video DOM element if mounted
+      if (localVideoRef.current) {
+        localVideoRef.current.srcObject = stream;
+        localVideoRef.current.muted = true;
+        localVideoRef.current.playsInline = true;
+        localVideoRef.current.play().catch(err => {
+          console.warn('[WebRTC] Local video play failed:', err);
+        });
+      }
+
+      return stream;
     } catch (err: any) {
       console.warn('getUserMedia error:', err);
       let errorMsg = 'Could not access camera or microphone.';
@@ -167,6 +196,61 @@ export const VideoRoom: React.FC<VideoRoomProps> = ({ appointment }) => {
       setMediaError(errorMsg);
       setHasRealStream(false);
       return null;
+    }
+  };
+
+  // Synchronize local video element srcObject whenever stream or camera state updates
+  useEffect(() => {
+    const videoEl = localVideoRef.current;
+    if (!videoEl) return;
+
+    const activeStream = isScreenSharing ? screenStreamRef.current : streamRef.current;
+    if (activeStream && hasRealStream && isCamOn) {
+      if (videoEl.srcObject !== activeStream) {
+        videoEl.srcObject = activeStream;
+      }
+      videoEl.muted = true;
+      videoEl.playsInline = true;
+      videoEl.play().catch(err => {
+        console.warn('[WebRTC] Local preview play error:', err);
+      });
+    }
+  }, [hasRealStream, isCamOn, isScreenSharing]);
+
+  // Synchronize remote video element srcObject whenever peer connects or remote stream arrives
+  useEffect(() => {
+    const videoEl = remoteVideoRef.current;
+    if (!videoEl) return;
+
+    if (remoteStreamRef.current && peerConnected) {
+      if (videoEl.srcObject !== remoteStreamRef.current) {
+        videoEl.srcObject = remoteStreamRef.current;
+      }
+      videoEl.playsInline = true;
+      videoEl.play().catch(err => {
+        console.warn('[WebRTC] Remote video play error:', err);
+      });
+    }
+  }, [peerConnected]);
+
+  // Handle manual retry of device access
+  const handleRetryMedia = async () => {
+    const stream = await startLocalMedia();
+    if (stream && peerConnectionRef.current) {
+      const pc = peerConnectionRef.current;
+      const senders = pc.getSenders();
+      stream.getTracks().forEach(track => {
+        const sender = senders.find(s => s.track && s.track.kind === track.kind);
+        if (sender) {
+          sender.replaceTrack(track).catch(e => console.warn('[WebRTC] replaceTrack error:', e));
+        } else {
+          try {
+            pc.addTrack(track, stream);
+          } catch (e) {
+            console.warn('[WebRTC] addTrack error:', e);
+          }
+        }
+      });
     }
   };
 
@@ -273,11 +357,15 @@ export const VideoRoom: React.FC<VideoRoomProps> = ({ appointment }) => {
       // Remote Track Handler
       pc.ontrack = event => {
         console.log('[WebRTC] remote stream received:', event.streams?.[0]?.id, 'Track kind:', event.track.kind);
-        if (remoteVideoRef.current && event.streams && event.streams[0]) {
-          remoteVideoRef.current.srcObject = event.streams[0];
-          setPeerConnected(true);
-          setPeerLeft(false);
+        const remoteStream = event.streams?.[0] || new MediaStream([event.track]);
+        remoteStreamRef.current = remoteStream;
+        if (remoteVideoRef.current) {
+          remoteVideoRef.current.srcObject = remoteStream;
+          remoteVideoRef.current.playsInline = true;
+          remoteVideoRef.current.play().catch(e => console.warn('[WebRTC] Remote video play error:', e));
         }
+        setPeerConnected(true);
+        setPeerLeft(false);
       };
 
       // Perfect Negotiation: onnegotiationneeded
@@ -695,7 +783,7 @@ export const VideoRoom: React.FC<VideoRoomProps> = ({ appointment }) => {
             <span>{mediaError}</span>
           </div>
           <button
-            onClick={() => startLocalMedia()}
+            onClick={handleRetryMedia}
             className="px-3 py-1 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-semibold flex items-center gap-1 text-[11px]"
           >
             <RefreshCw className="w-3 h-3" /> Retry Device Access
@@ -708,44 +796,45 @@ export const VideoRoom: React.FC<VideoRoomProps> = ({ appointment }) => {
         <div className="flex-1 p-4 relative flex flex-col justify-between bg-slate-950">
           <div className="flex-1 rounded-2xl bg-slate-900 border border-slate-800 relative overflow-hidden flex items-center justify-center">
             {/* Remote Feed Display */}
-            {peerConnected ? (
-              <div className="w-full h-full relative">
-                <video
-                  ref={remoteVideoRef}
-                  autoPlay
-                  playsInline
-                  className="w-full h-full object-cover"
-                />
+            <div className="w-full h-full relative flex items-center justify-center">
+              <video
+                ref={remoteVideoRef}
+                autoPlay
+                playsInline
+                className={`w-full h-full object-cover ${peerConnected ? 'block' : 'hidden'}`}
+              />
+              {peerConnected && (
                 <div className="absolute bottom-4 left-4 bg-slate-950/80 px-3 py-1 rounded-lg text-xs font-semibold text-white flex items-center gap-2">
                   <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                   {isDoctor ? appointment.patientName : doctorDisplayName} (Live Remote)
                 </div>
-              </div>
-            ) : (
-              <div className="text-center space-y-4 max-w-md px-6">
-                <div className="w-20 h-20 rounded-full bg-slate-800 border-2 border-primary-500/30 flex items-center justify-center mx-auto text-primary-400">
-                  <Radio className="w-8 h-8 animate-pulse" />
+              )}
+              {!peerConnected && (
+                <div className="text-center space-y-4 max-w-md px-6">
+                  <div className="w-20 h-20 rounded-full bg-slate-800 border-2 border-primary-500/30 flex items-center justify-center mx-auto text-primary-400">
+                    <Radio className="w-8 h-8 animate-pulse" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-base text-white">
+                      {peerLeft 
+                        ? 'Participant Left Room' 
+                        : isDoctor 
+                          ? `Waiting for ${appointment.patientName} to join` 
+                          : `Waiting for ${doctorDisplayName} to join`}
+                    </h4>
+                    <p className="text-xs text-slate-400 mt-1">
+                      {peerLeft
+                        ? 'The other party disconnected. You may wait for them to reconnect or exit the room.'
+                        : `Realtime signaling active on room ${appointment.bookingId || appointment.id}. Remote video will stream as soon as the other participant connects.`}
+                    </p>
+                  </div>
+                  <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-slate-800 text-xs text-slate-300 font-mono">
+                    <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
+                    Waiting for peer WebRTC handshake...
+                  </div>
                 </div>
-                <div>
-                  <h4 className="font-bold text-base text-white">
-                    {peerLeft 
-                      ? 'Participant Left Room' 
-                      : isDoctor 
-                        ? `Waiting for ${appointment.patientName} to join` 
-                        : `Waiting for ${doctorDisplayName} to join`}
-                  </h4>
-                  <p className="text-xs text-slate-400 mt-1">
-                    {peerLeft
-                      ? 'The other party disconnected. You may wait for them to reconnect or exit the room.'
-                      : `Realtime signaling active on room ${appointment.bookingId || appointment.id}. Remote video will stream as soon as the other participant connects.`}
-                  </p>
-                </div>
-                <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-slate-800 text-xs text-slate-300 font-mono">
-                  <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
-                  Waiting for peer WebRTC handshake...
-                </div>
-              </div>
-            )}
+              )}
+            </div>
 
             {/* Signaling Status Badge */}
             <div className="absolute top-4 left-4 bg-slate-950/80 backdrop-blur-md px-3 py-1 rounded-lg text-xs font-semibold border border-slate-700 text-slate-200 flex items-center gap-1.5">
@@ -755,26 +844,22 @@ export const VideoRoom: React.FC<VideoRoomProps> = ({ appointment }) => {
 
             {/* Self Video Picture-in-Picture */}
             <div className="absolute bottom-4 right-4 w-48 h-36 rounded-xl bg-slate-800 border-2 border-slate-700 shadow-2xl overflow-hidden relative">
-              {hasRealStream && isCamOn ? (
-                <video
-                  ref={localVideoRef}
-                  autoPlay
-                  playsInline
-                  muted
-                  className={`w-full h-full object-cover ${isScreenSharing ? '' : 'mirror'}`}
-                />
-              ) : isCamOn ? (
-                <div className="w-full h-full flex flex-col items-center justify-center text-xs text-slate-400 bg-slate-900 p-2 text-center">
+              <video
+                ref={localVideoRef}
+                autoPlay
+                playsInline
+                muted
+                className={`w-full h-full object-cover transition-opacity duration-200 ${
+                  isScreenSharing ? '' : '-scale-x-100'
+                } ${hasRealStream && isCamOn ? 'opacity-100 block' : 'opacity-0 hidden'}`}
+              />
+              {(!hasRealStream || !isCamOn) && (
+                <div className="w-full h-full flex flex-col items-center justify-center text-xs text-slate-400 bg-slate-900 p-2 text-center absolute inset-0">
                   <VideoOff className="w-6 h-6 text-slate-500 mb-1" />
-                  Camera Not Detected
-                </div>
-              ) : (
-                <div className="w-full h-full flex flex-col items-center justify-center text-xs text-slate-400 bg-slate-900">
-                  <VideoOff className="w-6 h-6 text-slate-500 mb-1" />
-                  Camera Off
+                  <span>{!isCamOn ? 'Camera Off' : mediaError ? 'Camera Error' : 'Starting Camera...'}</span>
                 </div>
               )}
-              <div className="absolute bottom-1.5 left-1.5 bg-slate-950/80 px-2 py-0.5 rounded text-[10px] font-bold">
+              <div className="absolute bottom-1.5 left-1.5 bg-slate-950/80 px-2 py-0.5 rounded text-[10px] font-bold z-10 pointer-events-none">
                 You ({isDoctor ? 'Doctor' : 'Patient'}) {isScreenSharing ? '• Sharing Screen' : ''}
               </div>
             </div>
