@@ -79,24 +79,35 @@ export const aiService = {
       };
     }
 
-    // 2. Secure Backend API (/api/ai-guidance)
+    // 2. Secure Server-Side Google Gemini Endpoint (/api/symptom-checker with /api/ai-guidance fallback)
     try {
-      const response = await fetch('/api/ai-guidance', {
+      const payload = JSON.stringify({
+        symptoms: sanitizedSymptoms,
+        freeText: sanitizedFreeText,
+        severity: clampedSeverity,
+        durationDays: clampedDuration,
+        ageGroup: request.ageGroup,
+        medicalConditions: request.medicalConditions,
+        currentMedications: request.currentMedications,
+        allergies: request.allergies,
+        pregnancyStatus: request.pregnancyStatus,
+        followUpAnswers: request.followUpAnswers
+      });
+
+      let response = await fetch('/api/symptom-checker', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          symptoms: sanitizedSymptoms,
-          freeText: sanitizedFreeText,
-          severity: clampedSeverity,
-          durationDays: clampedDuration,
-          ageGroup: request.ageGroup,
-          medicalConditions: request.medicalConditions,
-          currentMedications: request.currentMedications,
-          allergies: request.allergies,
-          pregnancyStatus: request.pregnancyStatus,
-          followUpAnswers: request.followUpAnswers
-        })
+        body: payload
       });
+
+      // If symptom-checker returns 404, fallback to ai-guidance
+      if (response.status === 404) {
+        response = await fetch('/api/ai-guidance', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: payload
+        });
+      }
 
       if (response.ok) {
         const data = (await response.json()) as SymptomGuidanceResponse;
@@ -209,14 +220,25 @@ export const aiService = {
         ];
       }
 
+      const riskLevel: 'Low' | 'Moderate' | 'High' = clampedSeverity >= 7 ? 'High' : clampedSeverity >= 4 ? 'Moderate' : 'Low';
+
       return {
+        summary: fallbackSummary,
+        possibleConditions: fallbackConditions.map(c => c.name),
+        riskLevel,
+        recommendation: 'Schedule a consultation with a verified campus physician or visit MCE Health Centre for a thorough in-person examination.',
+        doctorConsultationRecommended: true,
+        selfCare: fallbackOTC,
+        disclaimer: 'This AI-generated information is for preliminary guidance only and is not a medical diagnosis.',
+
+        // Backwards compatibility mappings
         symptom_summary: fallbackSummary,
         follow_up_questions: [
           'When did you first notice these symptoms?',
           'Have you taken any home remedies or OTC medicines so far?'
         ],
         possible_conditions: fallbackConditions,
-        urgency: clampedSeverity >= 7 ? 'URGENT' : clampedSeverity >= 4 ? 'MODERATE' : 'LOW',
+        urgency: (riskLevel === 'High' ? 'URGENT' : riskLevel === 'Moderate' ? 'MODERATE' : 'LOW') as 'LOW' | 'MODERATE' | 'URGENT',
         red_flags: [
           'Sudden severe worsening of symptoms',
           'High fever (>102°F) not responding to medication',
@@ -231,7 +253,6 @@ export const aiService = {
           { name: 'WHO: World Health Organization Clinical Topics', url: 'https://www.who.int/health-topics' }
         ],
         emergency: false,
-        disclaimer: 'This information is for health guidance and educational purposes and does not replace professional medical diagnosis, prescription, or emergency treatment from a qualified healthcare professional.',
         isRealAI: false,
         provider: 'deterministic-clinical-guidance-safety-engine',
         related_medicines: medicineService.getMedicinesForSymptom(combinedSymptomText)

@@ -745,66 +745,99 @@ export const SymptomTriage: React.FC<SymptomTriageProps> = ({
                       {/* 💡 9 to 16. RICH GUIDANCE RESULT CARDS */}
                       {msg.isTriageResult && msg.triageData && (
                         <div className="mt-4 space-y-3.5 text-xs text-slate-800 dark:text-slate-200">
-                          {/* 9. Urgency Result Card */}
-                          <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-700 space-y-1">
+                          {/* 9. Risk Level & Urgency Assessment */}
+                          <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-700 space-y-1.5">
                             <div className="flex items-center justify-between">
                               <span className="font-extrabold text-xs text-slate-900 dark:text-white uppercase tracking-wider">
-                                Urgency Assessment
+                                Risk Level: {msg.triageData.riskLevel || (msg.triageData.urgency === 'LOW' ? 'Low' : msg.triageData.urgency === 'MODERATE' ? 'Moderate' : 'High')}
                               </span>
                               <span
                                 className={`px-2.5 py-0.5 rounded-md text-xs font-black uppercase tracking-wide ${
-                                  msg.triageData.urgency === 'LOW'
+                                  (msg.triageData.riskLevel === 'Low' || msg.triageData.urgency === 'LOW')
                                     ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800'
-                                    : msg.triageData.urgency === 'MODERATE'
+                                    : (msg.triageData.riskLevel === 'Moderate' || msg.triageData.urgency === 'MODERATE')
                                     ? 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800'
                                     : 'bg-rose-100 dark:bg-rose-950 text-rose-800 dark:text-rose-300 border border-rose-300 dark:border-rose-800'
                                 }`}
                               >
-                                ● {msg.triageData.urgency}
+                                ● {msg.triageData.riskLevel ? `${msg.triageData.riskLevel} Risk` : msg.triageData.urgency}
                               </span>
                             </div>
                             <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                              Based on the information you provided, this symptom profile reflects {msg.triageData.urgency.toLowerCase()} urgency.
+                              {msg.triageData.summary || `Based on the clinical parameters provided, this symptom profile reflects ${(msg.triageData.riskLevel || msg.triageData.urgency).toLowerCase()} risk.`}
                             </p>
+                            {msg.triageData.doctorConsultationRecommended && (
+                              <div className="mt-2 pt-2 border-t border-slate-200 dark:border-slate-800 flex items-center gap-1.5 text-[11px] font-semibold text-primary-600 dark:text-primary-400">
+                                <Stethoscope className="w-3.5 h-3.5" />
+                                <span>Doctor consultation is recommended for clinical evaluation.</span>
+                              </div>
+                            )}
                           </div>
 
                           {/* 10. Possible Causes to Discuss With a Doctor */}
                           <div className="p-3.5 rounded-2xl bg-blue-50/70 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900 space-y-2">
                             <div className="flex items-center gap-1.5 font-bold text-[#1e3a8a] dark:text-blue-300 text-xs">
                               <HelpCircle className="w-4 h-4 text-primary-600" />
-                              <span>Possible Causes to Discuss With a Doctor:</span>
+                              <span>Possible Health Conditions to Discuss With a Doctor:</span>
                             </div>
                             <div className="space-y-1.5 pt-1">
-                              {msg.triageData.possible_conditions?.map((cond, idx) => (
+                              {(msg.triageData.possibleConditions && msg.triageData.possibleConditions.length > 0
+                                ? msg.triageData.possibleConditions.map(name => ({ name, explanation: 'Possible cause to discuss with a healthcare professional' }))
+                                : msg.triageData.possible_conditions
+                              )?.map((cond, idx) => (
                                 <div key={idx} className="bg-white dark:bg-slate-900 p-2.5 rounded-xl border border-blue-100 dark:border-blue-950 space-y-1">
                                   <div className="flex items-center justify-between font-bold text-xs text-slate-900 dark:text-white">
-                                    <span>{cond.name}</span>
+                                    <span>{typeof cond === 'string' ? cond : cond.name}</span>
                                     <span className="text-[10px] font-semibold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950 px-2 py-0.5 rounded">
                                       Possible Cause
                                     </span>
                                   </div>
-                                  {cond.explanation && (
+                                  {typeof cond !== 'string' && cond.explanation && (
                                     <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed">
                                       {cond.explanation}
                                     </p>
                                   )}
                                   <p className="text-[10px] text-slate-400 italic">
-                                    Discuss with a healthcare professional
+                                    Preliminary category — discuss with a healthcare professional
                                   </p>
                                 </div>
                               ))}
                             </div>
                           </div>
 
-                          {/* 11. Self-Care ("What You Can Do Now") */}
-                          <div className="p-3.5 rounded-2xl bg-amber-50/70 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900 space-y-1.5">
+                          {/* 11. Recommended Next Step */}
+                          {(msg.triageData.recommendation || msg.triageData.recommended_action) && (
+                            <div className="p-3.5 rounded-2xl bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-900 space-y-1.5">
+                              <div className="flex items-center gap-1.5 font-bold text-indigo-900 dark:text-indigo-300 text-xs">
+                                <ArrowRight className="w-4 h-4 text-indigo-600" />
+                                <span>Recommended Next Step:</span>
+                              </div>
+                              <p className="text-xs text-indigo-950 dark:text-indigo-200 leading-relaxed font-medium">
+                                {msg.triageData.recommendation || msg.triageData.recommended_action}
+                              </p>
+                            </div>
+                          )}
+
+                          {/* 12. General Self-Care Guidance */}
+                          <div className="p-3.5 rounded-2xl bg-amber-50/70 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900 space-y-2">
                             <div className="flex items-center gap-1.5 font-bold text-amber-900 dark:text-amber-300 text-xs">
                               <CheckCircle2 className="w-4 h-4 text-amber-600" />
-                              <span>What You Can Do Now (Self-Care Guidance):</span>
+                              <span>General Self-Care Guidance:</span>
                             </div>
-                            <p className="text-xs text-amber-950 dark:text-amber-200 leading-relaxed font-medium">
-                              {msg.triageData.recommended_action}
-                            </p>
+                            {msg.triageData.selfCare && Array.isArray(msg.triageData.selfCare) && msg.triageData.selfCare.length > 0 ? (
+                              <ul className="space-y-1 text-xs text-amber-950 dark:text-amber-200 pl-1">
+                                {msg.triageData.selfCare.map((tip, idx) => (
+                                  <li key={idx} className="flex items-start gap-1.5">
+                                    <span className="text-amber-600 font-bold">•</span>
+                                    <span>{tip}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : (
+                              <p className="text-xs text-amber-950 dark:text-amber-200 leading-relaxed font-medium">
+                                {msg.triageData.recommended_action || 'Get adequate hydration and rest, and monitor symptoms.'}
+                              </p>
+                            )}
                           </div>
 
                           {/* 12. Medicine Information ("Related Medicine Information from Uploaded Dataset") */}
@@ -1002,6 +1035,15 @@ export const SymptomTriage: React.FC<SymptomTriageProps> = ({
 
                               <span className="text-slate-500">Recommended Specialty:</span>
                               <span className="font-bold text-slate-900 dark:text-white">{msg.triageData.recommended_specialty || 'General Medicine'}</span>
+                            </div>
+                          </div>
+
+                          {/* 16.5 Medical Safety Disclaimer */}
+                          <div className="p-3.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 text-[11px] text-amber-900 dark:text-amber-200 flex items-start gap-2 shadow-xs">
+                            <Info className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+                            <div>
+                              <p className="font-bold">Medical Disclaimer:</p>
+                              <p>This AI-generated information is for preliminary guidance only and is not a medical diagnosis.</p>
                             </div>
                           </div>
 

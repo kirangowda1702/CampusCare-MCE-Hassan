@@ -477,13 +477,19 @@ export interface SymptomGuidanceRequest {
 }
 
 export interface SymptomGuidanceResponse {
+  summary?: string;
   symptom_summary: string;
   follow_up_questions?: string[];
+  possibleConditions?: string[];
   possible_conditions: PossibleCondition[];
+  riskLevel?: 'Low' | 'Moderate' | 'High' | 'Emergency';
   urgency: UrgencyLevel;
   red_flags: string[];
+  recommendation?: string;
   recommended_action: string;
+  doctorConsultationRecommended?: boolean;
   recommended_specialty: string;
+  selfCare?: string[];
   common_otc_options: string[];
   medicine_precautions: string[];
   sources: AuthoritativeSource[];

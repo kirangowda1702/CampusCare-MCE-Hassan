@@ -659,11 +659,11 @@ JSON Schema:
       let successfulModel = '';
 
       const candidateModels = [
-        'gemini-3.8-flash',
-        'gemini-3.5-flash-lite',
-        'gemma-4-26b-a4b-it',
-        'gemma-4-31b-it'
-      ];
+        process.env.GEMINI_MODEL,
+        'gemini-1.5-flash',
+        'gemini-2.0-flash',
+        'gemini-1.5-pro'
+      ].filter(Boolean) as string[];
 
       const modelDiagnostics: string[] = [];
       for (const m of candidateModels) {

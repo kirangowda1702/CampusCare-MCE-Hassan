@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "test": "esbuild scripts/test-auth.ts --bundle --platform=node --format=esm --outfile=scripts/test-auth.mjs && node scripts/test-auth.mjs && esbuild scripts/test-calendar-appointments.ts --bundle --platform=node --format=esm --outfile=scripts/test-calendar-appointments.mjs && node scripts/test-calendar-appointments.mjs"
+    "test": "esbuild scripts/test-auth.ts --bundle --platform=node --format=esm --outfile=scripts/test-auth.mjs && node scripts/test-auth.mjs && esbuild scripts/test-calendar-appointments.ts --bundle --platform=node --format=esm --outfile=scripts/test-calendar-appointments.mjs && node scripts/test-calendar-appointments.mjs && esbuild scripts/test-symptom-checker.ts --bundle --platform=node --format=esm --outfile=scripts/test-symptom-checker.mjs && node scripts/test-symptom-checker.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.116.0",
