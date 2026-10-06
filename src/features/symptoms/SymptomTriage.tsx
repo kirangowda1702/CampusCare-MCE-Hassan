@@ -104,13 +104,25 @@ export const SymptomTriage: React.FC<SymptomTriageProps> = ({
   const [isMedLoading, setIsMedLoading] = useState(false);
   const [medError, setMedError] = useState<string | null>(null);
 
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Auto-scroll to latest message
+  // Preserve user's scroll position: only adjust internal container scroll if user is already at the bottom.
+  // Never scroll the page/window or interrupt the user's reading position.
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isTyping]);
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    // Check if user is already near the bottom of the chat container (within 80px)
+    const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+    const isNearBottom = distanceFromBottom < 80;
+
+    // Only scroll within the chat container if already near the bottom.
+    // Never call window.scrollTo(), window.scrollBy(), or element.scrollIntoView().
+    if (isNearBottom) {
+      container.scrollTop = container.scrollHeight;
+    }
+  }, [messages]);
 
   // Load verified doctors on mount
   useEffect(() => {
@@ -681,7 +693,10 @@ export const SymptomTriage: React.FC<SymptomTriageProps> = ({
               </div>
 
               {/* Messages Stream */}
-              <div className="flex-1 p-4 sm:p-5 overflow-y-auto space-y-4 bg-slate-50/40 dark:bg-slate-950/40">
+              <div
+                ref={messagesContainerRef}
+                className="flex-1 p-4 sm:p-5 overflow-y-auto space-y-4 bg-slate-50/40 dark:bg-slate-950/40"
+              >
                 {messages.map(msg => (
                   <div
                     key={msg.id}
@@ -1110,8 +1125,6 @@ export const SymptomTriage: React.FC<SymptomTriageProps> = ({
                     </div>
                   </div>
                 )}
-
-                <div ref={messagesEndRef} />
               </div>
 
               {/* Chat Input Bar */}
