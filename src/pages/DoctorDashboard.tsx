@@ -53,8 +53,34 @@ export const DoctorDashboard: React.FC = () => {
   });
   const [savedSuccess, setSavedSuccess] = useState(false);
 
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [lastSyncTime, setLastSyncTime] = useState<string>('Just now');
+
+  const handleManualSync = async () => {
+    setIsSyncing(true);
+    try {
+      await refreshAppointments();
+      setLastSyncTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   useEffect(() => {
     refreshAppointments().catch(() => {});
+
+    const onFocus = () => {
+      if (document.visibilityState === 'visible') {
+        refreshAppointments().catch(() => {});
+      }
+    };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onFocus);
+
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onFocus);
+    };
   }, [user]);
 
   useEffect(() => {
@@ -150,23 +176,37 @@ export const DoctorDashboard: React.FC = () => {
           </div>
         </div>
 
-        {/* Doctor Availability Switcher */}
-        <div className="flex items-center gap-3 bg-slate-800/80 p-3 rounded-2xl border border-slate-700/80">
-          <div>
-            <div className="text-xs font-bold">Clinical Duty Status</div>
-            <div className="text-[11px] text-slate-400">
-              {isAvailable ? 'Accepting Teleconsultations' : 'Offline / In Clinic'}
-            </div>
-          </div>
+        {/* Header Action Controls */}
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Sync Appointments from Database */}
           <button
-            onClick={() => setIsAvailable(!isAvailable)}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
-              isAvailable ? 'bg-emerald-600 text-white' : 'bg-slate-700 text-slate-300'
-            }`}
+            onClick={handleManualSync}
+            disabled={isSyncing}
+            title="Force sync appointments with database"
+            className="p-3 rounded-2xl bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700/80 text-slate-300 hover:text-white transition-all flex items-center gap-2 text-xs font-semibold"
           >
-            <Power className="w-3.5 h-3.5" />
-            {isAvailable ? 'Online' : 'Offline'}
+            <RotateCcw className={`w-3.5 h-3.5 text-primary-400 ${isSyncing ? 'animate-spin text-primary-300' : ''}`} />
+            <span>{isSyncing ? 'Syncing...' : 'Sync'}</span>
           </button>
+
+          {/* Doctor Availability Switcher */}
+          <div className="flex items-center gap-3 bg-slate-800/80 p-3 rounded-2xl border border-slate-700/80">
+            <div>
+              <div className="text-xs font-bold">Duty Status</div>
+              <div className="text-[11px] text-slate-400">
+                {isAvailable ? 'Accepting Patients' : 'Offline / In Clinic'}
+              </div>
+            </div>
+            <button
+              onClick={() => setIsAvailable(!isAvailable)}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                isAvailable ? 'bg-emerald-600 text-white' : 'bg-slate-700 text-slate-300'
+              }`}
+            >
+              <Power className="w-3.5 h-3.5" />
+              {isAvailable ? 'Online' : 'Offline'}
+            </button>
+          </div>
         </div>
       </div>
 

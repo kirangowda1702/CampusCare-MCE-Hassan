@@ -12,9 +12,9 @@ export const isSupabaseConfigured = Boolean(
   rawUrl &&
   rawKey &&
   !rawUrl.includes('your-project-id') &&
-  !rawUrl.includes('campuscare-mce-hassan.supabase.co') &&
-  rawKey !== 'demo-anon-key' &&
-  !rawKey.includes('demo_anon_key') &&
+  !rawUrl.includes('placeholder.supabase.co') &&
+  rawKey !== 'placeholder-anon-key' &&
+  rawKey.length > 20 &&
   (() => {
     try {
       const u = new URL(rawUrl);

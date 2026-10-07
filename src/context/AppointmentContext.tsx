@@ -53,9 +53,11 @@ export const AppointmentProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const refreshAppointments = async () => {
     try {
       const data = await appointmentService.getAppointments();
-      if (data && data.length > 0) {
+      if (Array.isArray(data) && data.length > 0) {
         setAppointments(data);
       }
+    } catch (e) {
+      console.warn('[AppointmentContext] refresh error:', e);
     } finally {
       setLoading(false);
     }
@@ -66,17 +68,31 @@ export const AppointmentProvider: React.FC<{ children: React.ReactNode }> = ({ c
       appointmentReminderService.checkUpcomingAppointments().catch(() => {});
     });
 
-    // Subscribe to real-time updates (Supabase Realtime + local broadcasts)
+    // 1. Subscribe to real-time updates (Supabase Realtime + local broadcasts)
     const unsubscribe = appointmentService.subscribeToAppointments(() => {
       refreshAppointments().then(() => {
         appointmentReminderService.checkUpcomingAppointments().catch(() => {});
       });
     });
 
-    // Start background appointment reminder daemon (checks 15-30m pre-reminders and 0m start notifications)
+    // 2. Window focus & Tab visibility listener (re-syncs immediately when Doctor or Student switches to the app)
+    const handleFocusOrVisible = () => {
+      if (document.visibilityState === 'visible') {
+        refreshAppointments().catch(() => {});
+      }
+    };
+    window.addEventListener('focus', handleFocusOrVisible);
+    document.addEventListener('visibilitychange', handleFocusOrVisible);
+
+    // 3. Periodic background synchronization across disparate networks (Mobile Data <-> Wi-Fi)
+    const pollInterval = setInterval(() => {
+      refreshAppointments().catch(() => {});
+    }, 8000);
+
+    // 4. Background appointment reminder daemon
     const stopReminderDaemon = appointmentReminderService.startDaemon(30000);
 
-    // Cross-tab synchronization via local storage events
+    // 5. Cross-tab synchronization via local storage events
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === 'campuscare_appointments' && e.newValue) {
         try {
@@ -91,6 +107,9 @@ export const AppointmentProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
     return () => {
       unsubscribe();
+      window.removeEventListener('focus', handleFocusOrVisible);
+      document.removeEventListener('visibilitychange', handleFocusOrVisible);
+      clearInterval(pollInterval);
       stopReminderDaemon();
       window.removeEventListener('storage', handleStorageChange);
     };

@@ -213,8 +213,35 @@ export function normalizeAppointment(d: any): Appointment {
 
 export const appointmentService = {
   async getAppointments(): Promise<Appointment[]> {
-    let supabaseAppointments: Appointment[] = [];
+    const appointmentMap = new Map<string, Appointment>();
+    let databaseRecordsFound = false;
 
+    // 1. Authoritative cross-network sync via centralized serverless API endpoint (/api/appointments)
+    // Ensures real appointments booked on Mobile Data are immediately visible to Doctor on Wi-Fi
+    try {
+      if (typeof window !== 'undefined' && typeof fetch !== 'undefined') {
+        const apiRes = await fetch('/api/appointments', {
+          method: 'GET',
+          headers: { 'Accept': 'application/json' },
+          signal: typeof AbortSignal !== 'undefined' && AbortSignal.timeout ? AbortSignal.timeout(5000) : undefined
+        });
+        if (apiRes.ok) {
+          const resData = await apiRes.json();
+          if (resData?.appointments && Array.isArray(resData.appointments) && resData.appointments.length > 0) {
+            databaseRecordsFound = true;
+            resData.appointments.forEach((row: any) => {
+              const apt = normalizeAppointment(row);
+              appointmentMap.set(apt.bookingId, apt);
+              appointmentMap.set(apt.id, apt);
+            });
+          }
+        }
+      }
+    } catch (apiErr) {
+      // In offline or pure node test environments, continue to Supabase / local
+    }
+
+    // 2. Direct Supabase database query if configured on client
     if (isSupabaseConfigured) {
       try {
         const { data, error } = await supabase
@@ -223,47 +250,41 @@ export const appointmentService = {
           .order('created_at', { ascending: false });
 
         if (!error && data && data.length > 0) {
-          supabaseAppointments = data.map(normalizeAppointment);
+          databaseRecordsFound = true;
+          data.forEach(row => {
+            const apt = normalizeAppointment(row);
+            appointmentMap.set(apt.bookingId, apt);
+            appointmentMap.set(apt.id, apt);
+          });
         }
       } catch (err) {
-        console.warn('Supabase fetch appointments error:', err);
+        console.warn('[appointmentService] Supabase fetch error:', err);
       }
     }
 
-    // Merge with in-memory / local storage records
-    const saved = getLocalItem(STORAGE_KEY);
-    let localList: Appointment[] = [];
-    if (saved) {
-      try { 
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) {
-          localList = parsed.map(normalizeAppointment);
+    // 3. Fallback to local storage / memory ONLY if database returned zero records
+    if (!databaseRecordsFound) {
+      const saved = getLocalItem(STORAGE_KEY);
+      if (saved) {
+        try { 
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed)) {
+            parsed.forEach((d: any) => {
+              const apt = normalizeAppointment(d);
+              if (!appointmentMap.has(apt.bookingId) && !appointmentMap.has(apt.id)) {
+                appointmentMap.set(apt.bookingId, apt);
+              }
+            });
+          }
+        } catch (e) {}
+      }
+
+      inMemoryAppointments.forEach(apt => {
+        if (!appointmentMap.has(apt.bookingId) && !appointmentMap.has(apt.id)) {
+          appointmentMap.set(apt.bookingId, apt);
         }
-      } catch (e) {}
+      });
     }
-
-    // Combine records uniquely by bookingId and id
-    const appointmentMap = new Map<string, Appointment>();
-
-    // 1. Add Supabase records
-    supabaseAppointments.forEach(apt => {
-      appointmentMap.set(apt.bookingId, apt);
-      appointmentMap.set(apt.id, apt);
-    });
-
-    // 2. Add local storage records (keeps newly booked or offline appointments)
-    localList.forEach(apt => {
-      if (!appointmentMap.has(apt.bookingId) && !appointmentMap.has(apt.id)) {
-        appointmentMap.set(apt.bookingId, apt);
-      }
-    });
-
-    // 3. Fallback to inMemoryAppointments if empty
-    inMemoryAppointments.forEach(apt => {
-      if (!appointmentMap.has(apt.bookingId) && !appointmentMap.has(apt.id)) {
-        appointmentMap.set(apt.bookingId, apt);
-      }
-    });
 
     const combined = Array.from(new Set(appointmentMap.values())).sort(
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
@@ -318,9 +339,24 @@ export const appointmentService = {
       updatedAt: new Date().toISOString()
     };
 
+    // 4. Authoritative persistence to centralized serverless API (/api/appointments)
+    // Synchronizes across separate networks (Mobile Data <-> Wi-Fi)
+    try {
+      if (typeof window !== 'undefined' && typeof fetch !== 'undefined') {
+        await fetch('/api/appointments', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(newApt),
+          signal: typeof AbortSignal !== 'undefined' && AbortSignal.timeout ? AbortSignal.timeout(6000) : undefined
+        });
+      }
+    } catch (apiErr) {
+      console.warn('[appointmentService] API persistence warning:', apiErr);
+    }
+
+    // 5. Direct Supabase client insert if configured
     if (isSupabaseConfigured) {
       try {
-        // Resolve doctor ID (UUID or authoritative ID)
         let resolvedDoctorId = newApt.doctorId;
         if (newApt.doctorId === 'DOC001') {
           resolvedDoctorId = 'd0000001-0000-0000-0000-000000000001';
@@ -354,8 +390,7 @@ export const appointmentService = {
 
         const { error } = await supabase.from('appointments').insert([dbPayload]);
         if (error) {
-          console.warn('[appointmentService] Primary insert returned warning, trying raw fallback:', error);
-          // Fallback: minimal insert without strict foreign keys if needed
+          console.warn('[appointmentService] Primary insert returned warning, trying relaxed fallback:', error);
           await supabase.from('appointments').insert([{
             booking_id: newApt.bookingId,
             appointment_date: newApt.appointmentDate,
@@ -412,6 +447,21 @@ export const appointmentService = {
     const existing = await this.getAppointments();
     const target = existing.find(a => a.id === id || a.bookingId === id);
 
+    // 1. Authoritative update on centralized cloud API (/api/appointments)
+    try {
+      if (typeof window !== 'undefined' && typeof fetch !== 'undefined') {
+        await fetch('/api/appointments', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id, bookingId: target?.bookingId, status, notes }),
+          signal: typeof AbortSignal !== 'undefined' && AbortSignal.timeout ? AbortSignal.timeout(6000) : undefined
+        });
+      }
+    } catch (apiErr) {
+      console.warn('[appointmentService] API status update warning:', apiErr);
+    }
+
+    // 2. Direct Supabase update if configured
     if (isSupabaseConfigured) {
       try {
         await supabase
@@ -563,6 +613,19 @@ export const appointmentService = {
       if (isClashing) {
         throw new Error(`The slot ${newSlot} on ${newDate} is already reserved.`);
       }
+    }
+
+    try {
+      if (typeof window !== 'undefined' && typeof fetch !== 'undefined') {
+        await fetch('/api/appointments', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: target?.id || id, bookingId: target?.bookingId, appointmentDate: newDate, timeSlot: newSlot, status: 'rescheduled' }),
+          signal: typeof AbortSignal !== 'undefined' && AbortSignal.timeout ? AbortSignal.timeout(6000) : undefined
+        });
+      }
+    } catch (apiErr) {
+      console.warn('[appointmentService] API reschedule warning:', apiErr);
     }
 
     if (isSupabaseConfigured) {
