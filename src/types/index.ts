@@ -238,6 +238,7 @@ export interface SymptomTriageResult {
 }
 
 export type EmergencyCampusStatus =
+  | 'ACTIVE'
   | 'REQUESTED'
   | 'ACKNOWLEDGED'
   | 'RESPONDER_ASSIGNED'
@@ -252,6 +253,7 @@ export type EmergencyCampusStatus =
 
 export interface EmergencyRequest {
   id: string;
+  incidentCode?: string;
   userId?: string;
   userRole?: string;
   callerName: string;

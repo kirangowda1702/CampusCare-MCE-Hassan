@@ -1,7 +1,8 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { EmergencyRequest, FirstAidCentre, EmergencyContact, EmergencyCampusStatus } from '../types';
-import { emergencyService } from '../services/emergencyService';
+import { emergencyService, CallerAuthContext } from '../services/emergencyService';
 import { firstAidService, defaultFirstAidCentre, defaultEmergencyContacts } from '../services/firstAidService';
+import { useAuth } from './AuthContext';
 
 interface EmergencyContextType {
   activeEmergency: EmergencyRequest | null;
@@ -17,7 +18,7 @@ interface EmergencyContextType {
     callerName?: string,
     userRole?: string,
     userId?: string
-  ) => EmergencyRequest;
+  ) => Promise<EmergencyRequest>;
   updateWorkflowStatus: (
     id: string,
     status: EmergencyCampusStatus,
@@ -26,6 +27,7 @@ interface EmergencyContextType {
   resolveEmergency: (id: string) => void;
   cancelActiveEmergency: () => void;
   refreshFirstAidData: () => Promise<void>;
+  loadEmergencies: () => Promise<void>;
   isEmergencyModalOpen: boolean;
   setIsEmergencyModalOpen: (open: boolean) => void;
 }
@@ -33,6 +35,7 @@ interface EmergencyContextType {
 const EmergencyContext = createContext<EmergencyContextType | undefined>(undefined);
 
 const ACTIVE_STATUSES: EmergencyCampusStatus[] = [
+  'ACTIVE',
   'REQUESTED',
   'ACKNOWLEDGED',
   'RESPONDER_ASSIGNED',
@@ -43,6 +46,16 @@ const ACTIVE_STATUSES: EmergencyCampusStatus[] = [
 ];
 
 export const EmergencyProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { user, role } = useAuth();
+
+  const callerAuth: CallerAuthContext = useMemo(() => ({
+    id: user?.id,
+    role: role || 'student',
+    fullName: user?.fullName || 'Campus Member',
+    email: user?.email,
+    phone: user?.phone || '9110885805'
+  }), [user, role]);
+
   const [activeEmergency, setActiveEmergency] = useState<EmergencyRequest | null>(() => {
     const saved = localStorage.getItem('campuscare_active_emergency');
     if (saved) {
@@ -56,23 +69,35 @@ export const EmergencyProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [emergencyContacts, setEmergencyContacts] = useState<EmergencyContact[]>(defaultEmergencyContacts);
   const [isEmergencyModalOpen, setIsEmergencyModalOpen] = useState(false);
 
-  const loadEmergencies = async () => {
-    const data = await emergencyService.getEmergencies();
-    if (data && data.length > 0) {
-      setEmergencyHistory(data);
-      const active = data.find(d => ACTIVE_STATUSES.includes(d.status));
-      if (active) setActiveEmergency(active);
+  const loadEmergencies = useCallback(async () => {
+    try {
+      const data = await emergencyService.getEmergencies(callerAuth);
+      if (data && data.length > 0) {
+        setEmergencyHistory(data);
+        const active = data.find(d => ACTIVE_STATUSES.includes(d.status));
+        if (active) {
+          setActiveEmergency(active);
+        } else if (activeEmergency && ['RESOLVED', 'CANCELLED', 'resolved', 'cancelled'].includes(activeEmergency.status)) {
+          setActiveEmergency(null);
+        }
+      }
+    } catch (e) {
+      console.warn('Error loading emergencies:', e);
     }
-  };
+  }, [callerAuth, activeEmergency]);
 
-  const refreshFirstAidData = async () => {
-    const [centre, contacts] = await Promise.all([
-      firstAidService.getFirstAidCentre(),
-      firstAidService.getEmergencyContacts()
-    ]);
-    setFirstAidCentre(centre);
-    setEmergencyContacts(contacts);
-  };
+  const refreshFirstAidData = useCallback(async () => {
+    try {
+      const [centre, contacts] = await Promise.all([
+        firstAidService.getFirstAidCentre(),
+        firstAidService.getEmergencyContacts()
+      ]);
+      setFirstAidCentre(centre);
+      setEmergencyContacts(contacts);
+    } catch (e) {
+      console.warn('Error refreshing first aid data:', e);
+    }
+  }, []);
 
   useEffect(() => {
     loadEmergencies();
@@ -90,7 +115,7 @@ export const EmergencyProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       if (unsubscribeEmergencies) unsubscribeEmergencies();
       if (unsubscribeFirstAid) unsubscribeFirstAid();
     };
-  }, []);
+  }, [loadEmergencies, refreshFirstAidData]);
 
   useEffect(() => {
     if (activeEmergency) {
@@ -100,7 +125,7 @@ export const EmergencyProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   }, [activeEmergency]);
 
-  const triggerEmergency = (
+  const triggerEmergency = async (
     location: string,
     phone: string,
     type: EmergencyRequest['emergencyType'],
@@ -109,13 +134,20 @@ export const EmergencyProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     callerName?: string,
     userRole?: string,
     userId?: string
-  ): EmergencyRequest => {
+  ): Promise<EmergencyRequest> => {
     const now = new Date().toISOString();
-    const req: EmergencyRequest = {
+    const incidentCode = `MCE-SOS-2026-${Math.floor(1000 + Math.random() * 9000)}`;
+
+    const effectiveUserId = userId || callerAuth.id;
+    const effectiveRole = (userRole || callerAuth.role || 'student').toLowerCase();
+    const effectiveName = callerName || callerAuth.fullName || 'Campus Member (SOS Alert)';
+
+    const optimisticReq: EmergencyRequest = {
       id: 'emg-' + Date.now(),
-      userId: userId,
-      userRole: userRole || 'Student',
-      callerName: callerName || 'Campus Member (SOS Alert)',
+      incidentCode,
+      userId: effectiveUserId,
+      userRole: effectiveRole,
+      callerName: effectiveName,
       callerPhone: phone || '9110885805',
       locationDetails: location || 'MCE Hassan Campus',
       description: description || 'Immediate campus first-aid assistance requested.',
@@ -124,31 +156,38 @@ export const EmergencyProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       hasLocationPermission: Boolean(coords),
       locationShared: Boolean(coords),
       emergencyType: type,
-      status: 'REQUESTED',
+      status: 'ACTIVE',
       timestamp: now,
       createdAt: now,
       updatedAt: now,
       dispatchedUnit: 'MCE Campus Safety & First Aid Protocol'
     };
 
-    setActiveEmergency(req);
-    setEmergencyHistory(prev => [req, ...prev]);
+    setActiveEmergency(optimisticReq);
+    setEmergencyHistory(prev => [optimisticReq, ...prev.filter(e => e.id !== optimisticReq.id)]);
 
-    emergencyService.createEmergency({
-      userId: req.userId,
-      userRole: req.userRole,
-      callerName: req.callerName,
-      callerPhone: req.callerPhone,
-      locationDetails: req.locationDetails,
-      description: req.description,
-      latitude: req.latitude,
-      longitude: req.longitude,
-      locationShared: req.locationShared,
-      hasLocationPermission: req.hasLocationPermission,
-      emergencyType: req.emergencyType
-    }).catch(() => {});
-
-    return req;
+    try {
+      const created = await emergencyService.createEmergency({
+        userId: effectiveUserId,
+        userRole: effectiveRole,
+        callerName: optimisticReq.callerName,
+        callerPhone: optimisticReq.callerPhone,
+        locationDetails: optimisticReq.locationDetails,
+        description: optimisticReq.description,
+        latitude: optimisticReq.latitude,
+        longitude: optimisticReq.longitude,
+        locationShared: optimisticReq.locationShared,
+        hasLocationPermission: optimisticReq.hasLocationPermission,
+        emergencyType: optimisticReq.emergencyType,
+        incidentCode
+      });
+      setActiveEmergency(created);
+      setEmergencyHistory(prev => [created, ...prev.filter(e => e.id !== created.id)]);
+      return created;
+    } catch (e) {
+      console.warn('Failed to persist emergency:', e);
+      return optimisticReq;
+    }
   };
 
   const updateWorkflowStatus = async (
@@ -156,7 +195,8 @@ export const EmergencyProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     status: EmergencyCampusStatus,
     metadata?: { responderName?: string; referredHospitalId?: string; referralReason?: string }
   ) => {
-    await emergencyService.updateEmergencyStatus(id, status, metadata);
+    await emergencyService.updateEmergencyStatus(id, status, metadata, callerAuth);
+
     if (status === 'RESOLVED' || status === 'CANCELLED' || status === 'resolved' || status === 'cancelled') {
       if (activeEmergency?.id === id) setActiveEmergency(null);
     } else if (activeEmergency?.id === id) {
@@ -187,6 +227,7 @@ export const EmergencyProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         resolveEmergency,
         cancelActiveEmergency,
         refreshFirstAidData,
+        loadEmergencies,
         isEmergencyModalOpen,
         setIsEmergencyModalOpen
       }}

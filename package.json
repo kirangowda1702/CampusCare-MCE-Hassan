@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "test": "esbuild scripts/test-auth.ts --bundle --platform=node --format=esm --outfile=scripts/test-auth.mjs && node scripts/test-auth.mjs && esbuild scripts/test-calendar-appointments.ts --bundle --platform=node --format=esm --outfile=scripts/test-calendar-appointments.mjs && node scripts/test-calendar-appointments.mjs && esbuild scripts/test-symptom-checker.ts --bundle --platform=node --format=esm --outfile=scripts/test-symptom-checker.mjs && node scripts/test-symptom-checker.mjs && npx tsx scripts/test-doctor-dashboard-booking.ts && npx tsx scripts/test-cross-network-booking.ts && npx tsx scripts/test-appointment-rls.ts"
+    "test": "esbuild scripts/test-auth.ts --bundle --platform=node --format=esm --outfile=scripts/test-auth.mjs && node scripts/test-auth.mjs && esbuild scripts/test-calendar-appointments.ts --bundle --platform=node --format=esm --outfile=scripts/test-calendar-appointments.mjs && node scripts/test-calendar-appointments.mjs && esbuild scripts/test-symptom-checker.ts --bundle --platform=node --format=esm --outfile=scripts/test-symptom-checker.mjs && node scripts/test-symptom-checker.mjs && npx tsx scripts/test-doctor-dashboard-booking.ts && npx tsx scripts/test-cross-network-booking.ts && npx tsx scripts/test-appointment-rls.ts && npx tsx scripts/test-real-sos-workflow.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.116.0",

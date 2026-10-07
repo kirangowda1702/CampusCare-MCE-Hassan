@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Modal } from '../../components/common/Modal';
 import { useEmergency } from '../../context/EmergencyContext';
 import { useAuth } from '../../context/AuthContext';
-import { ShieldAlert, Phone, MapPin, CheckCircle2, LocateFixed, AlertTriangle, Building2 } from 'lucide-react';
+import { ShieldAlert, Phone, MapPin, CheckCircle2, LocateFixed, AlertTriangle, Lock } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
 export const EmergencyModal: React.FC = () => {
   const {
@@ -13,7 +14,7 @@ export const EmergencyModal: React.FC = () => {
     firstAidCentre
   } = useEmergency();
 
-  const { user, role } = useAuth();
+  const { user, role, isAuthenticated } = useAuth();
 
   const [countdown, setCountdown] = useState<number | null>(null);
   const [location, setLocation] = useState('MCE Hassan Main Campus (Silver Jubilee Block)');
@@ -23,6 +24,7 @@ export const EmergencyModal: React.FC = () => {
   const [gpsCoords, setGpsCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [gpsStatus, setGpsStatus] = useState<string>('Location not requested');
   const [isTriggered, setIsTriggered] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Request browser location when opening modal
   useEffect(() => {
@@ -55,21 +57,31 @@ export const EmergencyModal: React.FC = () => {
     }
   }, [isEmergencyModalOpen]);
 
+  const executeTrigger = async () => {
+    if (!isAuthenticated || !user) return;
+    setIsSubmitting(true);
+    const callerName = user?.fullName || 'Campus Member';
+    const userRole = (role || 'student').toLowerCase();
+    try {
+      await triggerEmergency(location, phone, emergencyType, gpsCoords, description, callerName, userRole, user?.id);
+      setIsTriggered(true);
+      setCountdown(null);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   useEffect(() => {
     let timer: any;
     if (countdown !== null && countdown > 0) {
       timer = setTimeout(() => setCountdown(countdown - 1), 1000);
     } else if (countdown === 0) {
-      const callerName = user?.fullName || 'Campus Member';
-      const userRole = (role || 'Student').toUpperCase();
-      triggerEmergency(location, phone, emergencyType, gpsCoords, description, callerName, userRole, user?.id);
-      setIsTriggered(true);
-      setCountdown(null);
+      executeTrigger();
     }
     return () => clearTimeout(timer);
-  }, [countdown, location, phone, emergencyType, gpsCoords, description, triggerEmergency, user, role]);
+  }, [countdown]);
 
-  const handleStartCountdown = () => setCountdown(5);
+  const handleStartCountdown = () => setCountdown(3);
   const handleCancelCountdown = () => setCountdown(null);
   const handleClose = () => {
     setCountdown(null);
@@ -85,7 +97,38 @@ export const EmergencyModal: React.FC = () => {
       maxWidth="lg"
     >
       <div className="space-y-4">
-        {isTriggered || activeEmergency ? (
+        {/* Authentication Check: Only Authenticated Users Can Trigger SOS */}
+        {!isAuthenticated || !user ? (
+          <div className="p-6 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 text-center space-y-4">
+            <div className="w-12 h-12 rounded-full bg-amber-500 text-white flex items-center justify-center mx-auto">
+              <Lock className="w-6 h-6" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-amber-900 dark:text-amber-200">
+                Authentication Required for Campus SOS
+              </h3>
+              <p className="text-xs text-amber-800 dark:text-amber-300 mt-1 max-w-sm mx-auto">
+                To prevent false alerts and protect campus responders, you must log in as a Student, Staff, Faculty, or Admin to activate campus emergency broadcasts.
+              </p>
+            </div>
+
+            <div className="pt-2 flex flex-col sm:flex-row gap-2 justify-center">
+              <Link
+                to="/login"
+                onClick={handleClose}
+                className="px-5 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow transition-all"
+              >
+                Log In to Account
+              </Link>
+              <a
+                href="tel:9110885805"
+                className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow transition-all flex items-center justify-center gap-1.5"
+              >
+                <Phone className="w-3.5 h-3.5" /> Call MCE First Aid (9110885805)
+              </a>
+            </div>
+          </div>
+        ) : isTriggered || activeEmergency ? (
           <div className="p-5 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-center space-y-3">
             <div className="w-14 h-14 rounded-full bg-emerald-500 text-white flex items-center justify-center mx-auto animate-bounce">
               <CheckCircle2 className="w-8 h-8" />
@@ -98,6 +141,12 @@ export const EmergencyModal: React.FC = () => {
             </p>
 
             <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-emerald-200 dark:border-emerald-800 text-xs font-semibold text-slate-800 dark:text-slate-200 space-y-1 text-left">
+              <div className="flex justify-between items-center text-[11px] text-slate-500 border-b border-slate-100 dark:border-slate-800 pb-1 mb-1">
+                <span>Incident Code:</span>
+                <span className="font-mono font-bold text-rose-600 dark:text-rose-400">
+                  {activeEmergency?.incidentCode || activeEmergency?.id || 'MCE-SOS-ACTIVE'}
+                </span>
+              </div>
               <div>
                 <MapPin className="w-4 h-4 text-emerald-600 inline mr-1" />
                 {activeEmergency?.locationDetails || location}
@@ -107,8 +156,8 @@ export const EmergencyModal: React.FC = () => {
                   ? `GPS Fixed: ${activeEmergency.latitude.toFixed(4)}°, ${activeEmergency.longitude.toFixed(4)}°`
                   : 'Location unavailable. Please contact MCE First Aid and provide your current location.'}
               </div>
-              <div className="text-[11px] text-primary-600 font-semibold">
-                Status: {activeEmergency?.status || 'REQUESTED'}
+              <div className="text-[11px] text-rose-600 font-bold uppercase pt-1">
+                Status: {activeEmergency?.status || 'ACTIVE'}
               </div>
             </div>
 
@@ -134,12 +183,21 @@ export const EmergencyModal: React.FC = () => {
                 Dispatching incident notification to MCE First-Aid Centre and on-duty coordinators.
               </p>
             </div>
-            <button
-              onClick={handleCancelCountdown}
-              className="px-6 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold transition-all shadow"
-            >
-              Cancel SOS
-            </button>
+            <div className="flex gap-2 justify-center">
+              <button
+                onClick={handleCancelCountdown}
+                className="px-6 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold transition-all shadow"
+              >
+                Cancel SOS
+              </button>
+              <button
+                onClick={executeTrigger}
+                disabled={isSubmitting}
+                className="px-6 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition-all shadow"
+              >
+                Send Now
+              </button>
+            </div>
           </div>
         ) : (
           <>
@@ -150,7 +208,7 @@ export const EmergencyModal: React.FC = () => {
                   MCE Campus Emergency & First-Aid Protocol
                 </h4>
                 <p className="text-[11px] text-rose-700 dark:text-rose-300 mt-0.5">
-                  Use this to notify on-duty campus medical staff for acute trauma, fainting, injuries, or lab incidents.
+                  Caller: <strong>{user?.fullName}</strong> ({((role || 'student') as string).toUpperCase()}) — Emergency alert will be transmitted immediately.
                 </p>
               </div>
             </div>
@@ -211,6 +269,7 @@ export const EmergencyModal: React.FC = () => {
             <div className="pt-2">
               <button
                 onClick={handleStartCountdown}
+                disabled={isSubmitting}
                 className="w-full py-3.5 px-4 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-sm shadow-lg shadow-rose-600/30 flex items-center justify-center gap-2 transition-all"
               >
                 <ShieldAlert className="w-5 h-5 animate-pulse" />
@@ -221,7 +280,7 @@ export const EmergencyModal: React.FC = () => {
             <div className="pt-3 border-t border-slate-100 dark:border-slate-800">
               <a
                 href="tel:9110885805"
-                className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-bold text-slate-900 dark:text-white transition-all shadow-sm"
+                className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-bold text-slate-900 dark:white transition-all shadow-sm"
               >
                 <Phone className="w-4 h-4 text-rose-500" /> Call MCE First Aid (9110885805)
               </a>

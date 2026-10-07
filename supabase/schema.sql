@@ -219,8 +219,10 @@ CREATE TABLE IF NOT EXISTS medical_records (
 
 -- 8. EMERGENCY REQUESTS
 CREATE TABLE IF NOT EXISTS emergency_requests (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id TEXT PRIMARY KEY DEFAULT uuid_generate_v4()::text,
+    incident_code TEXT UNIQUE,
     user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    user_role TEXT DEFAULT 'student',
     caller_name TEXT NOT NULL,
     caller_phone TEXT NOT NULL,
     location_details TEXT NOT NULL,
@@ -230,7 +232,7 @@ CREATE TABLE IF NOT EXISTS emergency_requests (
     longitude NUMERIC(10, 6),
     location_shared BOOLEAN DEFAULT false,
     has_location_permission BOOLEAN DEFAULT false,
-    status TEXT NOT NULL DEFAULT 'REQUESTED',
+    status TEXT NOT NULL DEFAULT 'ACTIVE',
     responder_name TEXT,
     dispatched_unit TEXT DEFAULT 'MCE Campus Safety & First Aid Protocol',
     first_aid_contacted_at TIMESTAMP WITH TIME ZONE,
@@ -510,8 +512,53 @@ CREATE POLICY "Participants manage consultation sessions" ON consultation_sessio
     auth.uid() = patient_id OR auth.uid() = doctor_id
 );
 
--- Emergency Requests: Accessible to campus responders
-CREATE POLICY "Emergency requests accessible to dispatchers and callers" ON emergency_requests FOR ALL USING (true);
+-- Emergency Requests: Strict RLS (NO OR true or WITH CHECK (true))
+DROP POLICY IF EXISTS "Emergency requests accessible to dispatchers and callers" ON emergency_requests;
+DROP POLICY IF EXISTS "Emergency requests viewable by authorized callers" ON emergency_requests;
+DROP POLICY IF EXISTS "Emergency requests insertable by authenticated users" ON emergency_requests;
+DROP POLICY IF EXISTS "Emergency requests updatable by responders and owners" ON emergency_requests;
+DROP POLICY IF EXISTS "Emergency requests deletable by admins" ON emergency_requests;
+
+-- SELECT: Caller who created the incident, or authorized First Aid responders/admins (admin, doctor, faculty, staff)
+CREATE POLICY "Emergency requests viewable by authorized callers" ON emergency_requests FOR SELECT USING (
+    (auth.uid() IS NOT NULL) AND (
+        auth.uid() = user_id
+        OR EXISTS (
+            SELECT 1 FROM users u 
+            WHERE u.id = auth.uid() AND u.role IN ('admin', 'doctor', 'faculty', 'staff')
+        )
+    )
+);
+
+-- INSERT: Authenticated student, staff, faculty, admin can create their own SOS incident
+CREATE POLICY "Emergency requests insertable by authenticated users" ON emergency_requests FOR INSERT WITH CHECK (
+    (auth.uid() IS NOT NULL) AND (
+        auth.uid() = user_id
+        OR EXISTS (
+            SELECT 1 FROM users u 
+            WHERE u.id = auth.uid() AND u.role IN ('admin', 'doctor', 'faculty', 'staff')
+        )
+    )
+);
+
+-- UPDATE: Responders/admins manage workflow; Incident creators can only cancel their own incident
+CREATE POLICY "Emergency requests updatable by responders and owners" ON emergency_requests FOR UPDATE USING (
+    (auth.uid() IS NOT NULL) AND (
+        EXISTS (
+            SELECT 1 FROM users u 
+            WHERE u.id = auth.uid() AND u.role IN ('admin', 'doctor', 'faculty', 'staff')
+        )
+        OR (auth.uid() = user_id AND status = 'CANCELLED')
+    )
+);
+
+-- DELETE: Admins only
+CREATE POLICY "Emergency requests deletable by admins" ON emergency_requests FOR DELETE USING (
+    (auth.uid() IS NOT NULL) AND EXISTS (
+        SELECT 1 FROM users u 
+        WHERE u.id = auth.uid() AND u.role = 'admin'
+    )
+);
 
 -- Healthcare Directory: Public read, authorized write
 CREATE POLICY "Healthcare directory public read hospitals" ON hospitals FOR SELECT USING (true);
@@ -799,7 +846,7 @@ INSERT INTO first_aid_centre (
     true,
     false, -- Pending official verification by administration
     'Contact details and active personnel roster pending formal administrative verification.',
-    'This is a college first-aid facility intended for initial campus triage and immediate first-aid care only. For life-threatening trauma or medical emergencies, call Govt 108 immediately.'
+    'This is a college first-aid facility intended for initial campus triage and immediate first-aid care only. Contact MCE First Aid at 9110885805.'
 ) ON CONFLICT (id) DO UPDATE SET
     name = EXCLUDED.name,
     building = EXCLUDED.building;
@@ -810,14 +857,9 @@ INSERT INTO emergency_contacts (
     availability_hours, is_campus_contact, verified, is_primary_sos
 ) VALUES
 (
-    'ec-gov-108', 'National Emergency Ambulance Service', 'Government Emergency Service',
-    'ambulance', 'Govt of Karnataka Health Dept', '108', NULL,
-    '24x7', false, true, true
-),
-(
-    'ec-gov-112', 'National Emergency Unified Response Support System (ERSS)', 'Police & Multi-Emergency',
-    'police', 'Ministry of Home Affairs / Karnataka Police', '112', NULL,
-    '24x7', false, true, true
+    'ec-mce-firstaid', 'MCE Campus First-Aid Responder Desk', 'First-Aid Duty Officer',
+    'first_aid', 'MCE Campus Health & Safety', '9110885805', NULL,
+    '24x7', true, false, true
 ),
 (
     'ec-gov-101', 'Karnataka Fire & Emergency Services', 'Fire & Rescue',

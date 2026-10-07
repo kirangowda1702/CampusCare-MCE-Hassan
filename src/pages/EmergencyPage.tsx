@@ -97,13 +97,13 @@ export const EmergencyPage: React.FC = () => {
   };
 
   useEffect(() => {
-    const isPendingAlert = activeEmergency && (activeEmergency.status === 'REQUESTED' || activeEmergency.status === 'active');
+    const isPendingAlert = activeEmergency && (activeEmergency.status === 'ACTIVE' || activeEmergency.status === 'REQUESTED' || activeEmergency.status === 'active');
 
     if (isPendingAlert && !isAlertMuted && isResponderOrAdmin) {
       playAlarmTone();
       alarmIntervalRef.current = setInterval(() => {
         playAlarmTone();
-      }, 900);
+      }, 1000);
     } else {
       if (alarmIntervalRef.current) {
         clearInterval(alarmIntervalRef.current);
@@ -121,7 +121,7 @@ export const EmergencyPage: React.FC = () => {
 
   const handleOpenLocation = (emg: EmergencyRequest) => {
     if (emg.latitude && emg.longitude) {
-      window.open(`https://www.google.com/maps/search/?api=1&query=${emg.latitude},${emg.longitude}`, '_blank');
+      window.open(`https://www.openstreetmap.org/?mlat=${emg.latitude}&mlon=${emg.longitude}#map=18/${emg.latitude}/${emg.longitude}`, '_blank', 'noopener,noreferrer');
     } else {
       setLocationAlertMessage('Location unavailable. Please contact MCE First Aid and provide your current location.');
       setTimeout(() => setLocationAlertMessage(null), 6000);
@@ -183,6 +183,8 @@ export const EmergencyPage: React.FC = () => {
 
   const getStatusBadgeColor = (status: EmergencyCampusStatus) => {
     switch (status) {
+      case 'ACTIVE':
+      case 'active':
       case 'REQUESTED': return 'bg-rose-600 text-white animate-pulse';
       case 'ACKNOWLEDGED': return 'bg-amber-500 text-white';
       case 'RESPONDER_ASSIGNED': return 'bg-blue-600 text-white';
@@ -287,7 +289,7 @@ export const EmergencyPage: React.FC = () => {
             </h4>
             <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-2 text-center text-xs">
               <div className={`p-2.5 rounded-xl border ${activeEmergency.status ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-300 text-emerald-800 dark:text-emerald-300' : 'bg-slate-100 dark:bg-slate-800 border-slate-200 text-slate-400'}`}>
-                <div className="font-bold text-[11px]">1. Requested</div>
+                <div className="font-bold text-[11px]">1. Active</div>
                 <div className="text-[10px] font-mono mt-0.5 opacity-80">
                   {new Date(activeEmergency.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                 </div>
@@ -391,7 +393,7 @@ export const EmergencyPage: React.FC = () => {
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 p-4 rounded-2xl bg-rose-700/60 backdrop-blur-sm border border-rose-400/40 text-xs">
                 <div>
                   <span className="text-rose-200 block text-[11px] font-medium">Incident ID</span>
-                  <strong className="text-white font-mono text-sm">{activeEmergency.id}</strong>
+                  <strong className="text-white font-mono text-sm">{activeEmergency.incidentCode || activeEmergency.id}</strong>
                 </div>
 
                 <div>
@@ -446,7 +448,7 @@ export const EmergencyPage: React.FC = () => {
                     updateWorkflowStatus(activeEmergency.id, 'ACKNOWLEDGED');
                     setIsAlertMuted(true);
                   }}
-                  disabled={activeEmergency.status !== 'REQUESTED' && activeEmergency.status !== 'active'}
+                  disabled={activeEmergency.status !== 'ACTIVE' && activeEmergency.status !== 'REQUESTED' && activeEmergency.status !== 'active'}
                   className="flex-1 sm:flex-initial px-5 py-2.5 rounded-xl bg-white text-rose-800 hover:bg-rose-50 disabled:opacity-40 font-black text-xs shadow-lg transition-all flex items-center justify-center gap-2 uppercase tracking-wider"
                 >
                   <CheckCircle2 className="w-4 h-4 text-emerald-600" />
@@ -507,7 +509,7 @@ export const EmergencyPage: React.FC = () => {
                 <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-200 dark:border-slate-700">
                   <button
                     onClick={() => updateWorkflowStatus(activeEmergency.id, 'ACKNOWLEDGED')}
-                    disabled={activeEmergency.status !== 'REQUESTED' && activeEmergency.status !== 'active'}
+                    disabled={activeEmergency.status !== 'ACTIVE' && activeEmergency.status !== 'REQUESTED' && activeEmergency.status !== 'active'}
                     className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 disabled:opacity-40 text-white text-xs font-bold shadow transition-all"
                   >
                     1. Acknowledge
@@ -722,7 +724,7 @@ export const EmergencyPage: React.FC = () => {
           <Navigation className="w-4 h-4 text-rose-600" />
           Nearest Hassan Emergency Hospitals & Trauma Centers
         </h3>
-        <HealthcareMap filterType="hospitals" height="380px" />
+        <HealthcareMap filterType="hospitals" height="380px" emergencyIncident={activeEmergency} />
       </div>
 
       {/* ======================================================== */}
