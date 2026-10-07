@@ -2,7 +2,7 @@ import { supabase, isSupabaseConfigured } from './supabase';
 import { Appointment, AppointmentStatus } from '../types';
 import { mockAppointments } from '../data/appointments';
 import { notificationService, getEquivalentUserIds } from './notificationService';
-import { isDateInPast, isDateToday, isTimeSlotInPastToday, getTodayIST } from '../utils/dateUtils';
+import { isDateInPast, isDateToday, isTimeSlotInPastToday, getTodayIST, checkAppointmentAccessIST, AppointmentAccessResult, getAppointmentEpochMsIST } from '../utils/dateUtils';
 
 const STORAGE_KEY = 'campuscare_appointments';
 let inMemoryAppointments: Appointment[] = [...mockAppointments];
@@ -510,7 +510,7 @@ export const appointmentService = {
       await notificationService.notifyAppointmentEvent({
         userId: newApt.patientId,
         title: 'Appointment Request Submitted',
-        message: `Your consultation request for ${docName} on ${newApt.appointmentDate} at ${newApt.timeSlot} has been created (Booking ID: ${newApt.bookingId}).`,
+        message: `Your consultation request for ${docName} on ${newApt.appointmentDate} at ${newApt.timeSlot} has been created (Booking ID: ${newApt.bookingId}). Status: Pending. Video consultation will be available at ${newApt.timeSlot}.`,
         type: 'appointment',
         link: `/appointments/${newApt.id}`
       });
@@ -585,12 +585,12 @@ export const appointmentService = {
       const doctorTargets = getEquivalentUserIds(target.doctorId);
 
       try {
-        if (status === 'confirmed') {
+        if (status === 'confirmed' || status === 'accepted') {
           // Student receives confirmation notification (Item 2 & 5)
           await notificationService.notifyAppointmentEvent({
             userId: target.patientId,
             title: 'Appointment Confirmed',
-            message: `Your appointment with ${docName} on ${target.appointmentDate} at ${target.timeSlot} has been confirmed (Booking ID: ${target.bookingId}).`,
+            message: `Your appointment with ${docName} on ${target.appointmentDate} at ${target.timeSlot} has been accepted (Booking ID: ${target.bookingId}). Status: Accepted. Video consultation will be available at ${target.timeSlot}.`,
             type: 'appointment',
             link: `/appointments/${target.id}`
           });
@@ -790,6 +790,57 @@ export const appointmentService = {
     return () => {
       listeners.delete(onUpdate);
       supabaseUnsub();
+    };
+  },
+
+  /**
+   * Fast client-side IST validation check (Asia/Kolkata timezone).
+   * Verifies if appointment time has arrived.
+   */
+  canAccessVideoConsultation(appointment: Appointment, serverEpochMs?: number): AppointmentAccessResult {
+    return checkAppointmentAccessIST(appointment, serverEpochMs);
+  },
+
+  /**
+   * Authoritative backend/security-layer consultation access verification.
+   * Validates participant role, appointment status, and server-side IST time check.
+   */
+  async verifyConsultationAccess(
+    appointmentId: string,
+    userContext?: any
+  ): Promise<{ allowed: boolean; message: string; minutesUntil?: number; reason?: string; serverEpochMs?: number }> {
+    try {
+      if (typeof window !== 'undefined' && typeof fetch !== 'undefined') {
+        const headers = await getAuthHeaders(userContext);
+        const res = await fetch(`/api/appointments?action=verify_consultation_access&id=${encodeURIComponent(appointmentId)}`, {
+          method: 'GET',
+          headers,
+          signal: typeof AbortSignal !== 'undefined' && AbortSignal.timeout ? AbortSignal.timeout(5000) : undefined
+        });
+        const data = await res.json();
+        return {
+          allowed: Boolean(data.allowed),
+          message: data.message || (data.allowed ? 'Access granted' : 'Access restricted'),
+          minutesUntil: data.minutesUntil,
+          reason: data.reason,
+          serverEpochMs: data.serverEpochMs
+        };
+      }
+    } catch (e) {
+      console.warn('[appointmentService] verifyConsultationAccess API call warning:', e);
+    }
+
+    // Fallback: local IST access check
+    const existing = inMemoryAppointments.find(a => a.id === appointmentId || a.bookingId === appointmentId);
+    if (!existing) {
+      return { allowed: false, message: 'Appointment not found' };
+    }
+    const localCheck = checkAppointmentAccessIST(existing);
+    return {
+      allowed: localCheck.isAccessible,
+      message: localCheck.message,
+      minutesUntil: localCheck.minutesUntil,
+      reason: localCheck.isAccessible ? 'ACCESS_GRANTED' : 'SCHEDULED_TIME_NOT_REACHED'
     };
   }
 };

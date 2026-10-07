@@ -15,6 +15,10 @@ export const AppointmentListPage: React.FC = () => {
 
   React.useEffect(() => {
     refreshAppointments().catch(() => {});
+    const interval = setInterval(() => {
+      refreshAppointments().catch(() => {});
+    }, 6000);
+    return () => clearInterval(interval);
   }, [user]);
 
   const todayStr = getTodayIST();
@@ -39,6 +43,8 @@ export const AppointmentListPage: React.FC = () => {
       if (a.appointmentDate !== todayStr || (a.status === 'cancelled' || a.status === 'rejected')) return false;
     } else if (filterStatus === 'upcoming') {
       if (a.appointmentDate < todayStr || a.status === 'cancelled' || a.status === 'rejected' || a.status === 'completed') return false;
+    } else if (filterStatus === 'confirmed') {
+      if (a.status !== 'confirmed' && a.status !== 'accepted') return false;
     } else if (filterStatus !== 'all' && a.status !== filterStatus) {
       return false;
     }

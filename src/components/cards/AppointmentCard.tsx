@@ -1,8 +1,9 @@
 import React from 'react';
-import { Calendar, Clock, Video, User, FileText, ChevronRight, XCircle } from 'lucide-react';
+import { Calendar, Clock, Video, User, FileText, ChevronRight, XCircle, Lock } from 'lucide-react';
 import { Appointment } from '../../types';
 import { StatusBadge } from '../common/StatusBadge';
 import { Link } from 'react-router-dom';
+import { checkAppointmentAccessIST } from '../../utils/dateUtils';
 
 interface AppointmentCardProps {
   appointment: Appointment;
@@ -29,8 +30,11 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({
 }) => {
   const isVideo = appointment.consultationType === 'video';
   const isPending = appointment.status === 'pending';
-  const isConfirmed = appointment.status === 'confirmed';
+  const isConfirmed = appointment.status === 'confirmed' || appointment.status === 'accepted';
   const isInProgress = appointment.status === 'in_progress';
+
+  const access = checkAppointmentAccessIST(appointment);
+  const isTimeReached = access.isTimeReached || isInProgress;
 
   const bookingTimestamp = appointment.createdAt
     ? new Date(appointment.createdAt).toLocaleDateString([], {
@@ -124,7 +128,18 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({
             </>
           )}
 
-          {isDoctorView && isConfirmed && onStartConsultation && (
+          {/* Doctor Video Actions */}
+          {isDoctorView && isConfirmed && !isTimeReached && isVideo && (
+            <button
+              disabled
+              title={`Video consultation will be available at ${appointment.timeSlot}`}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 text-xs font-semibold cursor-not-allowed border border-slate-200 dark:border-slate-700"
+            >
+              <Lock className="w-3.5 h-3.5" /> Video Locked ({appointment.timeSlot})
+            </button>
+          )}
+
+          {isDoctorView && isConfirmed && isTimeReached && onStartConsultation && (
             <button
               onClick={() => onStartConsultation(appointment.id)}
               className="px-3.5 py-1.5 rounded-xl bg-primary-600 text-white text-xs font-semibold hover:bg-primary-700 transition-colors shadow flex items-center gap-1.5 animate-pulse-subtle"
@@ -133,7 +148,7 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({
             </button>
           )}
 
-          {isDoctorView && (isConfirmed || isInProgress) && !onStartConsultation && isVideo && (
+          {isDoctorView && (isConfirmed || isInProgress) && isTimeReached && !onStartConsultation && isVideo && (
             <Link
               to={`/consultation/${appointment.id}`}
               className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-primary-600 hover:bg-primary-700 text-white text-xs font-semibold shadow transition-all animate-pulse-subtle"
@@ -152,7 +167,17 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({
           )}
 
           {/* Student / Patient Video Action */}
-          {!isDoctorView && (isConfirmed || isInProgress) && isVideo && (
+          {!isDoctorView && (isConfirmed || isInProgress) && isVideo && !isTimeReached && (
+            <button
+              disabled
+              title={`Video consultation will be available at ${appointment.timeSlot}`}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 text-xs font-semibold cursor-not-allowed border border-slate-200 dark:border-slate-700"
+            >
+              <Lock className="w-3.5 h-3.5" /> Video Locked ({appointment.timeSlot})
+            </button>
+          )}
+
+          {!isDoctorView && (isConfirmed || isInProgress) && isVideo && isTimeReached && (
             <Link
               to={`/consultation/${appointment.id}`}
               className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-primary-600 hover:bg-primary-700 text-white text-xs font-semibold shadow transition-all animate-pulse-subtle"

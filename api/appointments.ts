@@ -54,6 +54,49 @@ export function isValidUuid(str?: string | null): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
 }
 
+export function getAppointmentEpochMsIST(
+  dateStr: string,
+  timeSlotStr: string,
+  startTime24?: string
+): number | null {
+  if (!dateStr) return null;
+  const dateParts = dateStr.slice(0, 10).split('-').map(Number);
+  if (dateParts.length !== 3 || dateParts.some(isNaN)) return null;
+  const [year, month, day] = dateParts;
+
+  let hours = 0;
+  let minutes = 0;
+
+  if (timeSlotStr) {
+    const match = timeSlotStr.match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
+    if (match) {
+      hours = parseInt(match[1], 10);
+      minutes = parseInt(match[2], 10);
+      const meridian = match[3]?.toUpperCase();
+      if (meridian === 'PM' && hours < 12) hours += 12;
+      if (meridian === 'AM' && hours === 12) hours = 0;
+    } else if (startTime24) {
+      const [h, m] = startTime24.split(':').map(Number);
+      if (!isNaN(h) && !isNaN(m)) {
+        hours = h;
+        minutes = m;
+      }
+    }
+  } else if (startTime24) {
+    const [h, m] = startTime24.split(':').map(Number);
+    if (!isNaN(h) && !isNaN(m)) {
+      hours = h;
+      minutes = m;
+    }
+  } else {
+    return null;
+  }
+
+  // Asia/Kolkata is UTC+05:30 -> subtract 330 minutes from Date.UTC
+  const istOffsetMinutes = 330;
+  return Date.UTC(year, month - 1, day, hours, minutes, 0, 0) - istOffsetMinutes * 60 * 1000;
+}
+
 export function normalizeRow(d: any): any {
   const rawStatus = (d.status || 'pending').toString().toLowerCase();
   let status = 'pending';
@@ -367,6 +410,132 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // GET: Retrieve authorized appointments (RLS Scoped)
   // ==========================================
   if (req.method === 'GET') {
+    const action = req.query?.action as string | undefined;
+
+    // A. Backend Consultation Time & Authorization Access Verification Guard
+    if (action === 'verify_consultation_access') {
+      const targetId = (req.query?.id || req.query?.appointmentId || '').toString().trim();
+      if (!targetId) {
+        return res.status(400).json({
+          success: false,
+          allowed: false,
+          reason: 'MISSING_ID',
+          message: 'Appointment ID is required.'
+        });
+      }
+
+      // 1. Locate appointment
+      let target = memoryStore.find(a => a.id === targetId || a.bookingId === targetId);
+      if (!target && supabase) {
+        try {
+          const { data } = await supabase
+            .from('appointments')
+            .select('*')
+            .or(`id.eq.${targetId},booking_id.eq.${targetId}`)
+            .maybeSingle();
+          if (data) {
+            target = normalizeRow(data);
+          }
+        } catch (err) {
+          console.warn('[api/appointments] Error verifying appointment for consultation:', err);
+        }
+      }
+
+      if (!target) {
+        return res.status(404).json({
+          success: false,
+          allowed: false,
+          reason: 'NOT_FOUND',
+          message: 'Appointment not found.'
+        });
+      }
+
+      // 2. Strict Participant Authorization Guard:
+      // Only the assigned doctor, patient, or admin may enter the room.
+      const isPatient = isAppointmentForPatient(target, caller);
+      const isDoctor = isAppointmentForDoctor(target, caller);
+      const isAdmin = caller.role === 'admin';
+
+      if (!isPatient && !isDoctor && !isAdmin) {
+        return res.status(403).json({
+          success: false,
+          allowed: false,
+          reason: 'UNAUTHORIZED_PARTICIPANT',
+          message: 'Forbidden: You are not authorized to join this consultation room.'
+        });
+      }
+
+      // 3. Status check
+      const currentStatus = (target.status || 'pending').toLowerCase();
+      if (currentStatus === 'pending') {
+        return res.status(403).json({
+          success: false,
+          allowed: false,
+          reason: 'PENDING_APPROVAL',
+          status: currentStatus,
+          message: 'Video consultation is locked. Appointment is pending doctor acceptance.'
+        });
+      }
+      if (currentStatus === 'cancelled' || currentStatus === 'rejected') {
+        return res.status(403).json({
+          success: false,
+          allowed: false,
+          reason: 'NOT_PERMITTED',
+          status: currentStatus,
+          message: 'Consultation session has been cancelled or declined.'
+        });
+      }
+      if (currentStatus === 'completed') {
+        return res.status(403).json({
+          success: false,
+          allowed: false,
+          reason: 'COMPLETED',
+          status: currentStatus,
+          message: 'Consultation session has already been completed.'
+        });
+      }
+
+      // 4. Server-Side IST Time Access Check (Asia/Kolkata)
+      // If status is 'in_progress', session has already been started by doctor -> allow joining.
+      const nowEpochMs = Date.now();
+      const scheduledEpochMs = getAppointmentEpochMsIST(
+        target.appointmentDate,
+        target.timeSlot,
+        target.startTime
+      );
+
+      if (currentStatus !== 'in_progress' && scheduledEpochMs) {
+        const diffMs = scheduledEpochMs - nowEpochMs;
+        if (diffMs > 0) {
+          const minutesUntil = Math.max(1, Math.ceil(diffMs / (60 * 1000)));
+          return res.status(403).json({
+            success: false,
+            allowed: false,
+            reason: 'SCHEDULED_TIME_NOT_REACHED',
+            status: currentStatus,
+            message: `Video consultation will be available at ${target.timeSlot}.`,
+            scheduledTimeSlot: target.timeSlot,
+            scheduledDate: target.appointmentDate,
+            minutesUntil,
+            scheduledEpochMs,
+            serverEpochMs: nowEpochMs
+          });
+        }
+      }
+
+      return res.status(200).json({
+        success: true,
+        allowed: true,
+        reason: 'ACCESS_GRANTED',
+        appointmentId: target.id,
+        bookingId: target.bookingId,
+        roomId: target.id,
+        status: target.status,
+        message: 'Video consultation is active.',
+        serverEpochMs: nowEpochMs
+      });
+    }
+
     const appointmentMap = new Map<string, any>();
 
     // 1. Fetch from Supabase database if connected
@@ -529,6 +698,43 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         } else {
           supabaseResult.inserted = inserted;
         }
+
+        // Trigger in-app notifications
+        try {
+          const docName = newApt.doctorName.startsWith('Dr.') ? newApt.doctorName : `Dr. ${newApt.doctorName}`;
+          // 1. Notification to Student
+          const studentNotif: any = {
+            title: 'Appointment Request Submitted',
+            message: `Your consultation request for ${docName} on ${newApt.appointmentDate} at ${newApt.timeSlot} has been created (Booking ID: ${newApt.bookingId}). Video consultation will be available at ${newApt.timeSlot}.`,
+            type: 'appointment',
+            link: `/appointments/${newApt.id}`,
+            is_read: false,
+            created_at: new Date().toISOString()
+          };
+          if (isValidUuid(newApt.patientId)) {
+            studentNotif.user_id = newApt.patientId;
+          }
+          await supabase.from('notifications').insert([studentNotif]);
+
+          // 2. Notification to Doctor
+          let doctorUserUuid = newApt.doctorId;
+          if (newApt.doctorId === 'DOC001') doctorUserUuid = 'd0000001-0000-0000-0000-000000000001';
+          else if (newApt.doctorId === 'DOC002') doctorUserUuid = 'd0000002-0000-0000-0000-000000000002';
+          const doctorNotif: any = {
+            title: 'New Appointment Request',
+            message: `New appointment request from student ${newApt.patientName} for ${newApt.appointmentDate} at ${newApt.timeSlot} (Booking ID: ${newApt.bookingId}).`,
+            type: 'appointment',
+            link: `/appointments/${newApt.id}`,
+            is_read: false,
+            created_at: new Date().toISOString()
+          };
+          if (isValidUuid(doctorUserUuid)) {
+            doctorNotif.user_id = doctorUserUuid;
+          }
+          await supabase.from('notifications').insert([doctorNotif]);
+        } catch (notifErr) {
+          console.warn('[api/appointments] Booking notification insert warning:', notifErr);
+        }
       } catch (err: any) {
         console.warn('[api/appointments] Supabase exception during insert:', err);
         supabaseResult.exception = err.message;
@@ -609,10 +815,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // 3. Update in Supabase
+    const normStatus = status.toLowerCase();
+    const dbStatus = normStatus === 'accepted' ? 'confirmed' : normStatus;
+
     if (supabase) {
       try {
         const updateData: any = {
-          status: status.toLowerCase(),
+          status: dbStatus,
           updated_at: new Date().toISOString()
         };
         if (notes !== undefined) updateData.notes = notes;
@@ -621,6 +830,41 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           .from('appointments')
           .update(updateData)
           .or(`id.eq.${id || targetId},booking_id.eq.${bookingId || targetId}`);
+
+        // Trigger in-app notification to Student
+        try {
+          const docName = target.doctorName?.startsWith('Dr.') ? target.doctorName : `Dr. ${target.doctorName || 'Campus Doctor'}`;
+          let notifTitle = '';
+          let notifMessage = '';
+
+          if (normStatus === 'confirmed' || normStatus === 'accepted') {
+            notifTitle = 'Appointment Confirmed';
+            notifMessage = `Your appointment with ${docName} on ${target.appointmentDate} at ${target.timeSlot} has been accepted. Video consultation will be available at ${target.timeSlot}. (Booking ID: ${target.bookingId})`;
+          } else if (normStatus === 'rejected') {
+            notifTitle = 'Appointment Declined';
+            notifMessage = `Your appointment request with ${docName} on ${target.appointmentDate} at ${target.timeSlot} could not be accepted (Booking ID: ${target.bookingId}).`;
+          } else if (normStatus === 'in_progress') {
+            notifTitle = 'Consultation Started';
+            notifMessage = `${docName} has started the video consultation session for ${target.appointmentDate} at ${target.timeSlot} (Booking ID: ${target.bookingId}). Click to join video room.`;
+          }
+
+          if (notifTitle) {
+            const patientNotif: any = {
+              title: notifTitle,
+              message: notifMessage,
+              type: 'appointment',
+              link: normStatus === 'in_progress' ? `/consultation/${target.id}` : `/appointments/${target.id}`,
+              is_read: false,
+              created_at: new Date().toISOString()
+            };
+            if (isValidUuid(target.patientId)) {
+              patientNotif.user_id = target.patientId;
+            }
+            await supabase.from('notifications').insert([patientNotif]);
+          }
+        } catch (notifErr) {
+          console.warn('[api/appointments] Status update notification warning:', notifErr);
+        }
       } catch (err) {
         console.warn('[api/appointments] Supabase status update error:', err);
       }

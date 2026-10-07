@@ -184,3 +184,190 @@ export function generateMonthGrid(year: number, month: number): CalendarDay[] {
 
   return grid;
 }
+
+/**
+ * Parse an appointment date (YYYY-MM-DD) and time slot ("11:00 AM", "01:30 PM", "11:00")
+ * strictly into an Asia/Kolkata (IST) Unix epoch timestamp in milliseconds.
+ * IST is fixed at UTC+05:30 (+330 minutes).
+ */
+export function getAppointmentEpochMsIST(
+  dateStr: string,
+  timeSlotStr: string,
+  startTime24?: string
+): number | null {
+  if (!dateStr) return null;
+  const dateParts = dateStr.slice(0, 10).split('-').map(Number);
+  if (dateParts.length !== 3 || dateParts.some(isNaN)) return null;
+  const [year, month, day] = dateParts;
+
+  let hours = 0;
+  let minutes = 0;
+
+  if (timeSlotStr) {
+    const match = timeSlotStr.match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
+    if (match) {
+      hours = parseInt(match[1], 10);
+      minutes = parseInt(match[2], 10);
+      const meridian = match[3]?.toUpperCase();
+      if (meridian === 'PM' && hours < 12) hours += 12;
+      if (meridian === 'AM' && hours === 12) hours = 0;
+    } else if (startTime24) {
+      const [h, m] = startTime24.split(':').map(Number);
+      if (!isNaN(h) && !isNaN(m)) {
+        hours = h;
+        minutes = m;
+      }
+    }
+  } else if (startTime24) {
+    const [h, m] = startTime24.split(':').map(Number);
+    if (!isNaN(h) && !isNaN(m)) {
+      hours = h;
+      minutes = m;
+    }
+  } else {
+    return null;
+  }
+
+  // Asia/Kolkata is UTC+05:30 -> subtract 330 minutes from Date.UTC
+  const istOffsetMinutes = 330;
+  return Date.UTC(year, month - 1, day, hours, minutes, 0, 0) - istOffsetMinutes * 60 * 1000;
+}
+
+export interface AppointmentAccessResult {
+  isAccessible: boolean;
+  isTimeReached: boolean;
+  isStatusPermitted: boolean;
+  scheduledEpochMs: number | null;
+  currentEpochMs: number;
+  minutesUntil: number;
+  timeSlotIST: string;
+  dateIST: string;
+  message: string;
+  status: string;
+}
+
+/**
+ * Validates whether video consultation room is currently accessible based on IST schedule and status.
+ * An appointment scheduled for 11:00 AM must NOT allow video consultation before 11:00 AM.
+ * Optional serverEpochMs allows passing trusted server time.
+ */
+export function checkAppointmentAccessIST(
+  appointment: {
+    appointmentDate: string;
+    timeSlot: string;
+    startTime?: string;
+    status?: string;
+    consultationType?: string;
+  },
+  serverEpochMs?: number
+): AppointmentAccessResult {
+  const currentEpochMs = serverEpochMs ?? Date.now();
+  const rawStatus = (appointment.status || 'pending').toLowerCase();
+  
+  // Statuses that can potentially access consultation
+  const permittedStatuses = ['confirmed', 'accepted', 'ready', 'in_progress'];
+  const isStatusPermitted = permittedStatuses.includes(rawStatus);
+
+  const scheduledEpochMs = getAppointmentEpochMsIST(
+    appointment.appointmentDate,
+    appointment.timeSlot,
+    appointment.startTime
+  );
+
+  const timeSlot = appointment.timeSlot || 'Scheduled Time';
+  const dateStr = appointment.appointmentDate || getTodayIST();
+
+  if (!isStatusPermitted) {
+    let msg = 'Consultation room is not active.';
+    if (rawStatus === 'pending') {
+      msg = 'Appointment is pending doctor acceptance.';
+    } else if (rawStatus === 'rejected') {
+      msg = 'Appointment has been declined.';
+    } else if (rawStatus === 'cancelled') {
+      msg = 'Appointment has been cancelled.';
+    } else if (rawStatus === 'completed') {
+      msg = 'Consultation has already been completed.';
+    }
+    return {
+      isAccessible: false,
+      isTimeReached: false,
+      isStatusPermitted: false,
+      scheduledEpochMs,
+      currentEpochMs,
+      minutesUntil: 0,
+      timeSlotIST: timeSlot,
+      dateIST: dateStr,
+      message: msg,
+      status: rawStatus
+    };
+  }
+
+  // If consultation is already marked in_progress by doctor, always permit joining
+  if (rawStatus === 'in_progress') {
+    return {
+      isAccessible: true,
+      isTimeReached: true,
+      isStatusPermitted: true,
+      scheduledEpochMs,
+      currentEpochMs,
+      minutesUntil: 0,
+      timeSlotIST: timeSlot,
+      dateIST: dateStr,
+      message: 'Video consultation is currently active.',
+      status: rawStatus
+    };
+  }
+
+  // When scheduled time is not parsable, default to safe false if future or true if today
+  if (!scheduledEpochMs) {
+    return {
+      isAccessible: true,
+      isTimeReached: true,
+      isStatusPermitted: true,
+      scheduledEpochMs: currentEpochMs,
+      currentEpochMs,
+      minutesUntil: 0,
+      timeSlotIST: timeSlot,
+      dateIST: dateStr,
+      message: 'Video consultation is ready.',
+      status: rawStatus
+    };
+  }
+
+  const diffMs = scheduledEpochMs - currentEpochMs;
+  const isTimeReached = diffMs <= 0;
+  const minutesUntil = Math.max(0, Math.ceil(diffMs / (60 * 1000)));
+
+  if (!isTimeReached) {
+    const isToday = isDateToday(dateStr);
+    const timeMessage = isToday
+      ? `Video consultation will be available at ${timeSlot}.`
+      : `Video consultation will be available at ${timeSlot} on ${formatDateShort(dateStr)}.`;
+
+    return {
+      isAccessible: false,
+      isTimeReached: false,
+      isStatusPermitted: true,
+      scheduledEpochMs,
+      currentEpochMs,
+      minutesUntil,
+      timeSlotIST: timeSlot,
+      dateIST: dateStr,
+      message: timeMessage,
+      status: rawStatus
+    };
+  }
+
+  return {
+    isAccessible: true,
+    isTimeReached: true,
+    isStatusPermitted: true,
+    scheduledEpochMs,
+    currentEpochMs,
+    minutesUntil: 0,
+    timeSlotIST: timeSlot,
+    dateIST: dateStr,
+    message: 'Video consultation is now available.',
+    status: rawStatus
+  };
+}

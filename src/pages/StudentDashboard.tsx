@@ -33,6 +33,10 @@ export const StudentDashboard: React.FC = () => {
 
   React.useEffect(() => {
     refreshAppointments().catch(() => {});
+    const interval = setInterval(() => {
+      refreshAppointments().catch(() => {});
+    }, 6000);
+    return () => clearInterval(interval);
   }, [user]);
 
   const userAppointments = appointments.filter(a => {
@@ -43,7 +47,7 @@ export const StudentDashboard: React.FC = () => {
       (user.usn && a.patientUSNorEmpId === user.usn)
     );
   });
-  const upcomingApt = userAppointments.find(a => a.status === 'confirmed') ||
+  const upcomingApt = userAppointments.find(a => a.status === 'confirmed' || a.status === 'accepted' || a.status === 'in_progress') ||
                       userAppointments.find(a => a.status === 'pending') ||
                       userAppointments[0];
   const userPrescriptions = prescriptions.slice(0, 2);

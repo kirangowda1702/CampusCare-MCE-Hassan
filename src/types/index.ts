@@ -39,6 +39,8 @@ export type ConsultationType = 'video' | 'in_person' | 'chat';
 export type AppointmentStatus = 
   | 'pending' 
   | 'confirmed' 
+  | 'accepted'
+  | 'ready'
   | 'rejected' 
   | 'rescheduled' 
   | 'cancelled' 

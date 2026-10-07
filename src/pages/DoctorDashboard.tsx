@@ -97,7 +97,7 @@ export const DoctorDashboard: React.FC = () => {
   const doctorAppointments = appointments.filter(a => isAppointmentForDoctor(a, user));
 
   const pendingAppointments = doctorAppointments.filter(a => a.status === 'pending');
-  const confirmedAppointments = doctorAppointments.filter(a => a.status === 'confirmed');
+  const confirmedAppointments = doctorAppointments.filter(a => a.status === 'confirmed' || a.status === 'accepted');
   const todayAppointments = doctorAppointments.filter(
     a => a.appointmentDate === todayStr && a.status !== 'cancelled' && a.status !== 'rejected'
   );

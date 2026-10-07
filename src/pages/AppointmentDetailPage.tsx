@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { Video, ArrowLeft, Lock } from 'lucide-react';
 import { StatusBadge } from '../components/common/StatusBadge';
 import { isAppointmentForDoctor } from '../services/appointmentService';
+import { checkAppointmentAccessIST } from '../utils/dateUtils';
 
 export const AppointmentDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -71,13 +72,23 @@ export const AppointmentDetailPage: React.FC = () => {
             </h2>
           </div>
 
-          {appointment.status === 'confirmed' && appointment.consultationType === 'video' && (
-            <Link
-              to={`/consultation/${appointment.id}`}
-              className="px-4 py-2 rounded-xl bg-primary-600 hover:bg-primary-700 text-white text-xs font-bold shadow flex items-center gap-1.5 animate-pulse"
-            >
-              <Video className="w-4 h-4" /> Join Room
-            </Link>
+          {appointment.consultationType === 'video' && (appointment.status === 'confirmed' || appointment.status === 'accepted' || appointment.status === 'in_progress') && (
+            checkAppointmentAccessIST(appointment).isTimeReached || appointment.status === 'in_progress' ? (
+              <Link
+                to={`/consultation/${appointment.id}`}
+                className="px-4 py-2 rounded-xl bg-primary-600 hover:bg-primary-700 text-white text-xs font-bold shadow flex items-center gap-1.5 animate-pulse"
+              >
+                <Video className="w-4 h-4" /> Join Room
+              </Link>
+            ) : (
+              <button
+                disabled
+                title={`Video consultation will be available at ${appointment.timeSlot}`}
+                className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 text-xs font-bold border border-slate-200 dark:border-slate-700 flex items-center gap-1.5 cursor-not-allowed"
+              >
+                <Lock className="w-4 h-4" /> Locked ({appointment.timeSlot})
+              </button>
+            )
           )}
         </div>
 

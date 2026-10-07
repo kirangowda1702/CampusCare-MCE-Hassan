@@ -10,7 +10,7 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({ status, size = 'md' })
 
   let bgClass = 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border-slate-200 dark:border-slate-700';
 
-  if (['confirmed', 'completed', 'taken', 'resolved', 'active'].includes(normalized)) {
+  if (['confirmed', 'accepted', 'completed', 'taken', 'resolved', 'active', 'ready'].includes(normalized)) {
     bgClass = 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800';
   } else if (['pending', 'in progress', 'upcoming', 'dispatched', 'rescheduled'].includes(normalized)) {
     bgClass = 'bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300 border-amber-200 dark:border-amber-800';
