@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
 
-// Global cache for warm lambda executions & multi-network cross-sync
+// Global cache for offline / test runner fallback execution
 declare global {
   var __campuscare_emergencies: any[] | undefined;
 }
@@ -18,7 +18,7 @@ export interface CallerIdentity {
   phone?: string;
 }
 
-function getSupabaseClient() {
+export function getSupabaseClient() {
   const url = (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '').trim();
   const key = (
     process.env.SUPABASE_SERVICE_ROLE_KEY ||
@@ -173,6 +173,50 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const supabase = getSupabaseClient();
   const memoryStore = globalThis.__campuscare_emergencies || [];
 
+  // ==========================================
+  // Health & Diagnostics Endpoint (No auth required)
+  // ==========================================
+  if (req.method === 'GET' && (req.query?.health === 'true' || req.query?.status === 'check')) {
+    const url = (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '').trim();
+    let host: string | null = null;
+    try { if (url) host = new URL(url).host; } catch {}
+
+    let liveTableAccessible = false;
+    let liveError: string | null = null;
+    let rowCount = 0;
+
+    if (supabase) {
+      try {
+        const { count, error } = await supabase
+          .from('emergency_requests')
+          .select('*', { count: 'exact', head: true });
+        if (!error) {
+          liveTableAccessible = true;
+          rowCount = count || 0;
+        } else {
+          liveError = error.message;
+        }
+      } catch (e: any) {
+        liveError = e.message;
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      endpoint: '/api/emergency',
+      isSupabaseConnected: Boolean(supabase),
+      liveTableAccessible,
+      rowCount,
+      supabaseHost: host,
+      tableName: 'emergency_requests',
+      hasSupabaseUrl: Boolean(process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL),
+      hasServiceRoleKey: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
+      hasAnonKey: Boolean(process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY),
+      error: liveError,
+      timestamp: new Date().toISOString()
+    });
+  }
+
   // Enforce Authentication: Reject anonymous callers (public anonymous access prohibited)
   const caller = await extractCaller(req, supabase);
   if (!caller) {
@@ -186,44 +230,51 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // GET: Retrieve emergency incidents (RLS Scoped)
   // ==========================================
   if (req.method === 'GET') {
-    const incidentMap = new Map<string, any>();
-
-    // 1. Fetch from Supabase if connected
+    // 1. Supabase Cloud Database Single Source of Truth
     if (supabase) {
       try {
-        const { data, error } = await supabase
+        let query = supabase
           .from('emergency_requests')
           .select('*')
           .order('created_at', { ascending: false });
 
-        if (!error && data && Array.isArray(data)) {
-          data.forEach(row => {
-            const normalized = normalizeIncident(row);
-            incidentMap.set(normalized.id, normalized);
-            if (normalized.incidentCode) incidentMap.set(normalized.incidentCode, normalized);
+        // Enforce strict RLS: Students only see own incidents
+        if (!isResponder(caller.role) && caller.id) {
+          query = query.eq('user_id', caller.id);
+        }
+
+        const { data, error } = await query;
+        if (error) {
+          console.error('[api/emergency] Supabase query error:', error);
+          return res.status(500).json({
+            success: false,
+            error: `Database query failed: ${error.message}`
           });
         }
-      } catch (err) {
-        console.warn('[api/emergency] Supabase query warning:', err);
+
+        const incidents = (data || []).map(normalizeIncident);
+        return res.status(200).json({
+          success: true,
+          count: incidents.length,
+          isSupabaseConnected: true,
+          source: 'supabase_cloud',
+          emergencies: incidents,
+          data: incidents
+        });
+      } catch (err: any) {
+        return res.status(500).json({
+          success: false,
+          error: `Database exception: ${err.message}`
+        });
       }
     }
 
-    // 2. Merge with memory store
-    memoryStore.forEach(row => {
-      const normalized = normalizeIncident(row);
-      if (!incidentMap.has(normalized.id)) {
-        incidentMap.set(normalized.id, normalized);
-      }
-    });
-
-    const allIncidents = Array.from(new Set(incidentMap.values())).sort(
+    // 2. Offline memory fallback (strictly when Supabase is unconfigured)
+    let filteredIncidents: any[] = [];
+    const allIncidents = memoryStore.map(normalizeIncident).sort(
       (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
     );
 
-    // 3. Strict RLS Scope:
-    // - Responders & Admins: see all campus emergency incidents
-    // - Regular Students: see ONLY their own emergency incident records
-    let filteredIncidents: any[] = [];
     if (isResponder(caller.role)) {
       filteredIncidents = allIncidents;
     } else {
@@ -235,7 +286,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json({
       success: true,
       count: filteredIncidents.length,
-      isSupabaseConnected: Boolean(supabase),
+      isSupabaseConnected: false,
+      source: 'offline_memory',
       emergencies: filteredIncidents,
       data: filteredIncidents
     });
@@ -273,12 +325,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       updatedAt: now
     });
 
-    // 1. Persist to Supabase if connected
-    let supabaseResult: any = { attempted: false };
+    // 1. Supabase Cloud Database Single Source of Truth
     if (supabase) {
-      supabaseResult.attempted = true;
       try {
         const dbPayload: any = {
+          id: newIncident.id,
           incident_code: newIncident.incidentCode,
           user_role: newIncident.userRole,
           caller_name: newIncident.callerName,
@@ -294,10 +345,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           dispatched_unit: newIncident.dispatchedUnit
         };
 
-        if (isValidUuid(newIncident.id)) {
-          dbPayload.id = newIncident.id;
-        }
-
         if (isValidUuid(newIncident.userId)) {
           dbPayload.user_id = newIncident.userId;
         }
@@ -306,33 +353,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           .from('emergency_requests')
           .insert([dbPayload])
           .select()
-          .maybeSingle();
+          .single();
 
         if (error) {
-          console.warn('[api/emergency] Supabase primary insert warning:', error);
-          supabaseResult.error = error.message;
-
-          // Fallback insert without strict UUIDs if non-UUID ID was supplied
-          const { error: fbErr } = await supabase.from('emergency_requests').insert([{
-            caller_name: newIncident.callerName,
-            caller_phone: newIncident.callerPhone,
-            location_details: newIncident.locationDetails,
-            emergency_type: newIncident.emergencyType,
-            status: newIncident.status,
-            latitude: newIncident.latitude,
-            longitude: newIncident.longitude
-          }]);
-          if (!fbErr) supabaseResult.fallbackSuccess = true;
-        } else {
-          supabaseResult.inserted = inserted;
+          console.error('[api/emergency] Supabase insert error:', error);
+          return res.status(500).json({
+            success: false,
+            error: `Database persistence failed: ${error.message}`
+          });
         }
+
+        const normalized = normalizeIncident(inserted);
+        return res.status(200).json({
+          success: true,
+          source: 'supabase_cloud',
+          emergency: normalized,
+          data: normalized
+        });
       } catch (err: any) {
-        console.warn('[api/emergency] Supabase exception during insert:', err);
-        supabaseResult.exception = err.message;
+        return res.status(500).json({
+          success: false,
+          error: `Database insert exception: ${err.message}`
+        });
       }
     }
 
-    // 2. Persist to memory store
+    // 2. Offline memory fallback
     globalThis.__campuscare_emergencies = [
       newIncident,
       ...memoryStore.filter(e => e.id !== newIncident.id && e.incidentCode !== newIncident.incidentCode)
@@ -340,9 +386,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     return res.status(200).json({
       success: true,
+      source: 'offline_memory',
       emergency: newIncident,
-      data: newIncident,
-      supabaseResult
+      data: newIncident
     });
   }
 
@@ -350,7 +396,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // PATCH: Update incident status (RLS Verified)
   // ==========================================
   if (req.method === 'PATCH' || req.method === 'PUT') {
-    const { id, incidentCode, status, responderName, metadata } = req.body || {};
+    const { id, incidentCode, status, responderName } = req.body || {};
     const targetId = id || incidentCode;
 
     if (!targetId || !status) {
@@ -361,43 +407,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const cleanStatus = status.toString().toUpperCase();
-
-    // 1. Locate target incident
-    let target = memoryStore.find(e => e.id === targetId || e.incidentCode === targetId);
-    if (!target && supabase) {
-      try {
-        const { data } = await supabase
-          .from('emergency_requests')
-          .select('*')
-          .or(`id.eq.${id || targetId},incident_code.eq.${incidentCode || targetId}`)
-          .maybeSingle();
-        if (data) target = normalizeIncident(data);
-      } catch {}
-    }
-
-    if (!target) {
-      return res.status(404).json({
-        success: false,
-        error: `Incident ${targetId} not found.`
-      });
-    }
-
-    // 2. Strict RLS Authorization Check:
-    // Only authorized First Aid responders/admins can advance lifecycle:
-    // ACTIVE -> ACKNOWLEDGED -> ASSISTANCE_IN_PROGRESS -> RESOLVED
-    // Regular students can ONLY cancel their own active incident.
-    const userIsResponder = isResponder(caller.role);
-    const userIsOwner = target.userId && target.userId.toLowerCase() === caller.id.toLowerCase();
-
-    if (!userIsResponder) {
-      if (!userIsOwner || cleanStatus !== 'CANCELLED') {
-        return res.status(403).json({
-          success: false,
-          error: 'Forbidden: Only authorized First Aid responders/admins can update incident status.'
-        });
-      }
-    }
-
     const now = new Date().toISOString();
     const updateData: any = {
       status: cleanStatus,
@@ -422,19 +431,98 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       updateData.resolvedAt = now;
     }
 
-    // 3. Persist to Supabase if connected
+    // 1. Supabase Cloud Database Single Source of Truth
     if (supabase) {
       try {
-        await supabase
+        const { data: current, error: fetchErr } = await supabase
           .from('emergency_requests')
-          .update(updateData)
-          .or(`id.eq.${target.id},incident_code.eq.${target.incidentCode}`);
-      } catch (err) {
-        console.warn('[api/emergency] Supabase update warning:', err);
+          .select('*')
+          .or(`id.eq.${targetId},incident_code.eq.${targetId}`)
+          .maybeSingle();
+
+        if (fetchErr || !current) {
+          return res.status(404).json({
+            success: false,
+            error: `Incident ${targetId} not found in database.`
+          });
+        }
+
+        const userIsResponder = isResponder(caller.role);
+        const userIsOwner = current.user_id && current.user_id.toLowerCase() === caller.id.toLowerCase();
+
+        if (!userIsResponder) {
+          if (!userIsOwner || cleanStatus !== 'CANCELLED') {
+            return res.status(403).json({
+              success: false,
+              error: 'Forbidden: Only authorized First Aid responders/admins can update incident status.'
+            });
+          }
+        }
+
+        // Prepare database update payload
+        const dbUpdatePayload: any = {
+          status: cleanStatus,
+          updated_at: now
+        };
+        if (cleanStatus === 'ACKNOWLEDGED') dbUpdatePayload.first_aid_contacted_at = now;
+        if (cleanStatus === 'RESPONDER_ASSIGNED') {
+          dbUpdatePayload.responder_assigned_at = now;
+          if (responderName) dbUpdatePayload.responder_name = responderName;
+        }
+        if (cleanStatus === 'ASSISTANCE_IN_PROGRESS') dbUpdatePayload.assistance_started_at = now;
+        if (cleanStatus === 'RESOLVED') dbUpdatePayload.resolved_at = now;
+
+        const { data: updated, error: updateErr } = await supabase
+          .from('emergency_requests')
+          .update(dbUpdatePayload)
+          .or(`id.eq.${current.id},incident_code.eq.${current.incident_code}`)
+          .select()
+          .single();
+
+        if (updateErr) {
+          return res.status(500).json({
+            success: false,
+            error: `Database update failed: ${updateErr.message}`
+          });
+        }
+
+        const normalized = normalizeIncident(updated);
+        return res.status(200).json({
+          success: true,
+          source: 'supabase_cloud',
+          message: `Emergency incident ${current.id} status updated to ${cleanStatus}`,
+          incident: normalized,
+          data: normalized
+        });
+      } catch (err: any) {
+        return res.status(500).json({
+          success: false,
+          error: `Database update exception: ${err.message}`
+        });
       }
     }
 
-    // 4. Update memory store
+    // 2. Offline memory fallback
+    let target = memoryStore.find(e => e.id === targetId || e.incidentCode === targetId);
+    if (!target) {
+      return res.status(404).json({
+        success: false,
+        error: `Incident ${targetId} not found.`
+      });
+    }
+
+    const userIsResponder = isResponder(caller.role);
+    const userIsOwner = target.userId && target.userId.toLowerCase() === caller.id.toLowerCase();
+
+    if (!userIsResponder) {
+      if (!userIsOwner || cleanStatus !== 'CANCELLED') {
+        return res.status(403).json({
+          success: false,
+          error: 'Forbidden: Only authorized First Aid responders/admins can update incident status.'
+        });
+      }
+    }
+
     globalThis.__campuscare_emergencies = memoryStore.map(e => {
       if (e.id === target.id || e.incidentCode === target.incidentCode) {
         return {
@@ -460,6 +548,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     return res.status(200).json({
       success: true,
+      source: 'offline_memory',
       message: `Emergency incident ${target.id} status updated to ${cleanStatus}`,
       incident: updatedIncident,
       data: updatedIncident
