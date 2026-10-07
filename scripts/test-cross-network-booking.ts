@@ -4,12 +4,12 @@ import { normalizeRow } from '../api/appointments';
 import { isAppointmentForDoctor } from '../src/services/appointmentService';
 
 // Mock VercelRequest and VercelResponse for API endpoint testing
-function createMockReqRes(method: string, body?: any, query?: any) {
+function createMockReqRes(method: string, body?: any, query?: any, reqHeaders?: any) {
   const req: any = {
     method,
     body: body || {},
     query: query || {},
-    headers: {}
+    headers: reqHeaders || {}
   };
 
   let statusCode = 200;
@@ -65,6 +65,29 @@ async function runCrossNetworkTests() {
   let testBookingId = '';
   let testAptId = '';
 
+  const studentMobileHeaders = {
+    'x-user-id': 'usr-student-mobile-1',
+    'x-user-role': 'student',
+    'x-user-name': 'Kiran Gowda',
+    'x-user-email': 'kiran.student@mcehassan.ac.in'
+  };
+
+  const doctorWifiHeaders = {
+    'x-user-id': 'd0000000-0000-0000-0000-000000000001',
+    'x-doctor-id': 'DOC001',
+    'x-user-role': 'doctor',
+    'x-user-name': 'Dr. Kiran Gowda',
+    'x-user-email': 'dr.kirangowda@mcehassan.ac.in'
+  };
+
+  const doctorMadanHeaders = {
+    'x-user-id': 'd0000000-0000-0000-0000-000000000002',
+    'x-doctor-id': 'DOC002',
+    'x-user-role': 'doctor',
+    'x-user-name': 'Dr. Madan S K',
+    'x-user-email': 'dr.madansk@mcehassan.ac.in'
+  };
+
   // TEST 1: Student on Device A (Mobile Data) books an appointment via POST /api/appointments
   await test('1. Student on Device A (Mobile Data) creates appointment via POST /api/appointments', async () => {
     const bookingPayload = {
@@ -85,7 +108,7 @@ async function runCrossNetworkTests() {
       patientPhone: '+91 9845011111'
     };
 
-    const { req, res } = createMockReqRes('POST', bookingPayload);
+    const { req, res } = createMockReqRes('POST', bookingPayload, undefined, studentMobileHeaders);
     await handler(req, res);
 
     assert.strictEqual(res.getStatusCode(), 201, 'POST /api/appointments must return HTTP 201');
@@ -102,7 +125,7 @@ async function runCrossNetworkTests() {
 
   // TEST 2: Doctor on Device B (Wi-Fi) opens Doctor Dashboard and retrieves the appointment via GET /api/appointments
   await test('2. Doctor on Device B (Wi-Fi) retrieves appointment via GET /api/appointments', async () => {
-    const { req, res } = createMockReqRes('GET');
+    const { req, res } = createMockReqRes('GET', undefined, undefined, doctorWifiHeaders);
     await handler(req, res);
 
     assert.strictEqual(res.getStatusCode(), 200, 'GET /api/appointments must return HTTP 200');
@@ -119,7 +142,7 @@ async function runCrossNetworkTests() {
 
   // TEST 3: Doctor mapping verification for Dr. Kiran Gowda (DOC001)
   await test('3. Doctor Dashboard query matches appointment for Dr. Kiran Gowda (DOC001)', async () => {
-    const { req, res } = createMockReqRes('GET');
+    const { req, res } = createMockReqRes('GET', undefined, undefined, doctorWifiHeaders);
     await handler(req, res);
     const data = res.getData();
 
@@ -139,21 +162,13 @@ async function runCrossNetworkTests() {
 
   // TEST 4: Isolation verification for Dr. Madan S K (DOC002)
   await test('4. Isolation: Dr. Madan S K (DOC002) does NOT see DOC001 appointment', async () => {
-    const { req, res } = createMockReqRes('GET');
+    const { req, res } = createMockReqRes('GET', undefined, undefined, doctorMadanHeaders);
     await handler(req, res);
     const data = res.getData();
 
-    const madanUser = {
-      id: 'd0000000-0000-0000-0000-000000000002',
-      doctorId: 'DOC002',
-      fullName: 'Dr. Madan S K',
-      email: 'dr.madansk@mcehassan.ac.in',
-      role: 'doctor' as any
-    };
-
-    const madanAppointments = data.appointments.filter((a: any) => isAppointmentForDoctor(a, madanUser));
+    const madanAppointments = data.appointments;
     const leaked = madanAppointments.find((a: any) => a.bookingId === testBookingId);
-    assert.strictEqual(leaked, undefined, 'DOC002 must not see DOC001 appointment');
+    assert.strictEqual(leaked, undefined, 'DOC002 must not see DOC001 appointment via RLS GET');
   });
 
   // TEST 5: Doctor on Device B (Wi-Fi) accepts/confirms appointment via PATCH /api/appointments
@@ -163,7 +178,7 @@ async function runCrossNetworkTests() {
       bookingId: testBookingId,
       status: 'confirmed',
       notes: 'Consultation confirmed. Join video room at scheduled time.'
-    });
+    }, undefined, doctorWifiHeaders);
     await handler(req, res);
 
     assert.strictEqual(res.getStatusCode(), 200, 'PATCH /api/appointments must return HTTP 200');
@@ -172,7 +187,7 @@ async function runCrossNetworkTests() {
 
   // TEST 6: Student on Device A (Mobile Data) reads the confirmed status
   await test('6. Student on Device A (Mobile Data) sees confirmed status from cloud database', async () => {
-    const { req, res } = createMockReqRes('GET');
+    const { req, res } = createMockReqRes('GET', undefined, undefined, studentMobileHeaders);
     await handler(req, res);
     const data = res.getData();
 
@@ -196,26 +211,24 @@ async function runCrossNetworkTests() {
       patientName: 'Rahul Verma'
     };
 
+    const studentWifiHeaders = {
+      'x-user-id': 'usr-student-wifi-2',
+      'x-user-role': 'student',
+      'x-user-name': 'Rahul Verma'
+    };
+
     // Student on Wi-Fi books
-    const postReq = createMockReqRes('POST', doc2Payload);
+    const postReq = createMockReqRes('POST', doc2Payload, undefined, studentWifiHeaders);
     await handler(postReq.req, postReq.res);
     assert.strictEqual(postReq.res.getStatusCode(), 201);
     const created = postReq.res.getData().appointment;
 
     // Doctor on Mobile Data queries
-    const getReq = createMockReqRes('GET');
+    const getReq = createMockReqRes('GET', undefined, undefined, doctorMadanHeaders);
     await handler(getReq.req, getReq.res);
     const list = getReq.res.getData().appointments;
 
-    const madanUser = {
-      id: 'd0000000-0000-0000-0000-000000000002',
-      doctorId: 'DOC002',
-      fullName: 'Dr. Madan S K',
-      role: 'doctor' as any
-    };
-
-    const madanAppointments = list.filter((a: any) => isAppointmentForDoctor(a, madanUser));
-    const foundDoc2 = madanAppointments.find((a: any) => a.id === created.id || a.bookingId === created.bookingId);
+    const foundDoc2 = list.find((a: any) => a.id === created.id || a.bookingId === created.bookingId);
     assert.ok(foundDoc2, 'Dr. Madan S K on Mobile Data must see the appointment booked on Wi-Fi');
   });
 

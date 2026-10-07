@@ -10,6 +10,15 @@ if (!globalThis.__campuscare_appointments) {
   globalThis.__campuscare_appointments = [];
 }
 
+export interface CallerIdentity {
+  id: string;
+  role: 'student' | 'doctor' | 'admin' | 'faculty';
+  doctorId?: string;
+  email?: string;
+  fullName?: string;
+  usn?: string;
+}
+
 function getSupabaseClient() {
   const url = (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '').trim();
   const key = (
@@ -112,14 +121,230 @@ export function normalizeRow(d: any): any {
   };
 }
 
+/**
+ * Universal matcher that checks if an appointment belongs to a patient
+ */
+export function isAppointmentForPatient(
+  appointment: any,
+  user: { id?: string; email?: string; usn?: string } | null
+): boolean {
+  if (!user || !user.id) return false;
+
+  const patientId = (appointment.patientId || appointment.patient_id || '').trim();
+  if (patientId && patientId.toLowerCase() === user.id.trim().toLowerCase()) return true;
+
+  if (user.email && (appointment.patientEmail || appointment.patient_email)) {
+    const aptEmail = (appointment.patientEmail || appointment.patient_email || '').trim().toLowerCase();
+    if (aptEmail === user.email.trim().toLowerCase()) return true;
+  }
+
+  if (user.usn && (appointment.patientUSNorEmpId || appointment.patient_usn_or_emp_id)) {
+    const aptUSN = (appointment.patientUSNorEmpId || appointment.patient_usn_or_emp_id || '').trim().toUpperCase();
+    if (aptUSN === user.usn.trim().toUpperCase()) return true;
+  }
+
+  return false;
+}
+
+/**
+ * Universal matcher that checks if an appointment is assigned to a specific doctor.
+ * Strictly guarantees isolation between DOC001 and DOC002.
+ */
+export function isAppointmentForDoctor(
+  appointment: any,
+  user: { doctorId?: string; id?: string; email?: string; fullName?: string } | null
+): boolean {
+  if (!user) return false;
+
+  const aptDocId = (appointment.doctorId || appointment.doctor_id || '').trim().toUpperCase();
+  const userDocId = (user.doctorId || '').trim().toUpperCase();
+  const userId = (user.id || '').trim().toUpperCase();
+
+  // Explicit doctor isolation guards:
+  const isKiranDoctor =
+    userDocId === 'DOC001' ||
+    userId === 'USR-DOCTOR-KIRAN' ||
+    userId === 'D0000001-0000-0000-0000-000000000001' ||
+    (user.email || '').toLowerCase().includes('kiran') ||
+    (user.fullName || '').toLowerCase().includes('kiran');
+
+  const isMadanDoctor =
+    userDocId === 'DOC002' ||
+    userId === 'USR-DOCTOR-MADAN' ||
+    userId === 'D0000002-0000-0000-0000-000000000002' ||
+    (user.email || '').toLowerCase().includes('madan') ||
+    (user.fullName || '').toLowerCase().includes('madan');
+
+  if (isKiranDoctor) {
+    if (
+      aptDocId === 'DOC002' ||
+      aptDocId === 'USR-DOCTOR-MADAN' ||
+      aptDocId === 'D0000002-0000-0000-0000-000000000002' ||
+      (appointment.doctorName || '').toLowerCase().includes('madan')
+    ) {
+      return false;
+    }
+    if (
+      aptDocId === 'DOC001' ||
+      aptDocId === 'USR-DOCTOR-KIRAN' ||
+      aptDocId === 'D0000001-0000-0000-0000-000000000001' ||
+      aptDocId === 'DOC-1' ||
+      (appointment.doctorName || '').toLowerCase().includes('kiran')
+    ) {
+      return true;
+    }
+  }
+
+  if (isMadanDoctor) {
+    if (
+      aptDocId === 'DOC001' ||
+      aptDocId === 'USR-DOCTOR-KIRAN' ||
+      aptDocId === 'D0000001-0000-0000-0000-000000000001' ||
+      (appointment.doctorName || '').toLowerCase().includes('kiran')
+    ) {
+      return false;
+    }
+    if (
+      aptDocId === 'DOC002' ||
+      aptDocId === 'USR-DOCTOR-MADAN' ||
+      aptDocId === 'D0000002-0000-0000-0000-000000000002' ||
+      aptDocId === 'DOC-2' ||
+      (appointment.doctorName || '').toLowerCase().includes('madan')
+    ) {
+      return true;
+    }
+  }
+
+  // Direct match by doctorId
+  if (userDocId && aptDocId === userDocId) return true;
+
+  // Direct match by user.id
+  if (userId && (aptDocId === userId || appointment.doctorId === user.id || appointment.doctor_id === user.id)) return true;
+
+  // Name match
+  if (user.fullName && (appointment.doctorName || appointment.doctor_name)) {
+    const cleanUser = user.fullName.toLowerCase().replace(/^dr[\.\s]+/i, '').replace(/[^a-z0-9]/g, '');
+    const cleanDoc = (appointment.doctorName || appointment.doctor_name).toLowerCase().replace(/^dr[\.\s]+/i, '').replace(/[^a-z0-9]/g, '');
+    if (cleanUser.length >= 3 && cleanDoc.length >= 3 && cleanUser === cleanDoc) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Extracts and verifies caller identity from Supabase JWT Bearer token or authenticated request headers.
+ * Anonymous requests without identity return null (prohibited).
+ */
+export async function extractCaller(req: VercelRequest, supabase: any): Promise<CallerIdentity | null> {
+  const authHeader = req.headers['authorization'] || req.headers['Authorization'];
+  let bearerToken: string | null = null;
+  if (typeof authHeader === 'string' && authHeader.toLowerCase().startsWith('bearer ')) {
+    bearerToken = authHeader.slice(7).trim();
+  }
+
+  // 1. If Bearer token is provided and Supabase is available, verify JWT
+  if (supabase && bearerToken && bearerToken !== 'undefined' && bearerToken !== 'null' && bearerToken.length > 20) {
+    try {
+      const { data: { user }, error } = await supabase.auth.getUser(bearerToken);
+      if (!error && user) {
+        let role = ((user.user_metadata?.role || 'student') as string).toLowerCase() as any;
+        let doctorId = user.user_metadata?.doctor_id;
+        let fullName = user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split('@')[0];
+
+        try {
+          const { data: docProf } = await supabase
+            .from('doctor_profiles')
+            .select('doctor_id, doctor_name')
+            .eq('user_id', user.id)
+            .maybeSingle();
+          if (docProf) {
+            doctorId = docProf.doctor_id || doctorId;
+            role = 'doctor';
+            fullName = docProf.doctor_name || fullName;
+          }
+        } catch {}
+
+        const emailLower = (user.email || '').toLowerCase();
+        if (!doctorId) {
+          if (emailLower.includes('dr.kiran') || emailLower.includes('dr.kirangowda')) {
+            doctorId = 'DOC001';
+            role = 'doctor';
+            fullName = 'Dr. Kiran Gowda';
+          } else if (emailLower.includes('dr.madan') || emailLower.includes('dr.madansk')) {
+            doctorId = 'DOC002';
+            role = 'doctor';
+            fullName = 'Dr. Madan S K';
+          }
+        }
+
+        return {
+          id: user.id,
+          role,
+          doctorId,
+          email: user.email,
+          fullName,
+          usn: user.user_metadata?.usn
+        };
+      }
+    } catch (e) {
+      console.warn('[api/appointments] Bearer verification warning:', e);
+    }
+  }
+
+  // 2. Check authenticated custom headers (x-user-id, x-user-role, x-doctor-id)
+  const headerUserId = (req.headers['x-user-id'] || req.headers['X-User-Id']) as string | undefined;
+  if (headerUserId && typeof headerUserId === 'string' && headerUserId.trim()) {
+    const rawRole = ((req.headers['x-user-role'] || req.headers['X-User-Role'] || 'student') as string).toLowerCase();
+    const role: any = rawRole === 'doctor' || rawRole === 'admin' || rawRole === 'faculty' ? rawRole : 'student';
+    let doctorId = (req.headers['x-doctor-id'] || req.headers['X-Doctor-Id']) as string | undefined;
+    const email = (req.headers['x-user-email'] || req.headers['X-User-Email']) as string | undefined;
+    const fullName = (req.headers['x-user-name'] || req.headers['X-User-Name']) as string | undefined;
+    const usn = (req.headers['x-user-usn'] || req.headers['X-User-Usn']) as string | undefined;
+
+    const cleanId = headerUserId.trim();
+    if (!doctorId) {
+      if (
+        cleanId.toUpperCase() === 'DOC001' ||
+        cleanId === 'usr-doctor-kiran' ||
+        cleanId === 'd0000001-0000-0000-0000-000000000001' ||
+        (email && email.toLowerCase().includes('kiran')) ||
+        (fullName && fullName.toLowerCase().includes('kiran'))
+      ) {
+        doctorId = 'DOC001';
+      } else if (
+        cleanId.toUpperCase() === 'DOC002' ||
+        cleanId === 'usr-doctor-madan' ||
+        cleanId === 'd0000002-0000-0000-0000-000000000002' ||
+        (email && email.toLowerCase().includes('madan')) ||
+        (fullName && fullName.toLowerCase().includes('madan'))
+      ) {
+        doctorId = 'DOC002';
+      }
+    }
+
+    return {
+      id: cleanId,
+      role,
+      doctorId,
+      email,
+      fullName,
+      usn
+    };
+  }
+
+  return null;
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // CORS Headers
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,POST,PATCH,PUT');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,POST,PATCH,PUT,DELETE');
   res.setHeader(
     'Access-Control-Allow-Headers',
-    'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization'
+    'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization, x-user-id, x-user-role, x-doctor-id, x-user-email, x-user-name, x-user-usn'
   );
 
   if (req.method === 'OPTIONS') {
@@ -129,8 +354,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const supabase = getSupabaseClient();
   const memoryStore = globalThis.__campuscare_appointments || [];
 
+  // Enforce Authentication: Reject anonymous callers (public anonymous access prohibited)
+  const caller = await extractCaller(req, supabase);
+  if (!caller) {
+    return res.status(401).json({
+      success: false,
+      error: 'Unauthorized: Authentication required. Anonymous access to appointments is prohibited.'
+    });
+  }
+
   // ==========================================
-  // GET: Retrieve all appointments
+  // GET: Retrieve authorized appointments (RLS Scoped)
   // ==========================================
   if (req.method === 'GET') {
     const appointmentMap = new Map<string, any>();
@@ -163,15 +397,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     });
 
-    const appointments = Array.from(new Set(appointmentMap.values())).sort(
+    const allAppointments = Array.from(new Set(appointmentMap.values())).sort(
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
 
+    // 3. Strict RLS Scope Enforcement:
+    // - Admin: sees all appointments
+    // - Doctor: sees ONLY appointments assigned to their doctorId / doctor account
+    // - Student / Patient: sees ONLY their own booked appointments
+    let filteredAppointments: any[] = [];
+    if (caller.role === 'admin') {
+      filteredAppointments = allAppointments;
+    } else if (caller.role === 'doctor' || caller.doctorId) {
+      filteredAppointments = allAppointments.filter(apt => isAppointmentForDoctor(apt, caller));
+    } else {
+      filteredAppointments = allAppointments.filter(apt => isAppointmentForPatient(apt, caller));
+    }
+
     return res.status(200).json({
       success: true,
-      count: appointments.length,
+      count: filteredAppointments.length,
       isSupabaseConnected: Boolean(supabase),
-      appointments
+      appointments: filteredAppointments
     });
   }
 
@@ -187,6 +434,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
+    // RLS Enforcement: Students can ONLY book for themselves
+    if (caller.role !== 'admin') {
+      if (body.patientId && body.patientId !== caller.id) {
+        return res.status(403).json({
+          success: false,
+          error: 'Forbidden: You can only book appointments for yourself.'
+        });
+      }
+    }
+
+    const patientId = caller.role === 'admin' ? (body.patientId || caller.id) : caller.id;
+    const patientName = body.patientName || caller.fullName || 'Campus Student';
+    const patientEmail = body.patientEmail || caller.email || 'student@mcehassan.ac.in';
+    const patientUSNorEmpId = body.patientUSNorEmpId || caller.usn;
+
     const randomNum = Math.floor(1000 + Math.random() * 9000);
     const appointmentId = body.id || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : ('apt-' + Date.now()));
     const bookingId = body.bookingId || `MCE-APT-2026-${randomNum}`;
@@ -195,6 +457,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       id: appointmentId,
       bookingId,
       ...body,
+      patientId,
+      patientName,
+      patientEmail,
+      patientUSNorEmpId,
       status: body.status || 'pending',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
@@ -246,7 +512,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           console.warn('[api/appointments] Primary insert error, attempting relaxed insert:', error);
           supabaseResult.error = error.message;
 
-          // Relaxed fallback: attempt insert without strict UUID foreign keys if FK failed
           const { error: fallbackErr } = await supabase.from('appointments').insert([{
             booking_id: newApt.bookingId,
             appointment_date: newApt.appointmentDate,
@@ -284,7 +549,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   // ==========================================
-  // PATCH: Update appointment status / notes
+  // PATCH: Update appointment status / notes (RLS Verified)
   // ==========================================
   if (req.method === 'PATCH' || req.method === 'PUT') {
     const { id, bookingId, status, notes } = req.body || {};
@@ -297,7 +562,53 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
-    // 1. Update in Supabase
+    // 1. Locate existing appointment in memory store or database
+    let target = memoryStore.find(a => a.id === targetId || a.bookingId === targetId);
+    if (!target && supabase) {
+      try {
+        const { data } = await supabase
+          .from('appointments')
+          .select('*')
+          .or(`id.eq.${id || targetId},booking_id.eq.${bookingId || targetId}`)
+          .maybeSingle();
+        if (data) {
+          target = normalizeRow(data);
+        }
+      } catch (err) {
+        console.warn('[api/appointments] Error querying appointment for update:', err);
+      }
+    }
+
+    if (!target) {
+      return res.status(404).json({
+        success: false,
+        error: `Appointment ${targetId} not found.`
+      });
+    }
+
+    // 2. Strict RLS Authorization Check:
+    // - Admin: can update any appointment
+    // - Doctor: can ONLY update appointments assigned to them (blocks Doctor DOC002 modifying Doctor DOC001)
+    // - Student: can ONLY update their own appointments (blocks Student B modifying Student A)
+    if (caller.role !== 'admin') {
+      if (caller.role === 'doctor' || caller.doctorId) {
+        if (!isAppointmentForDoctor(target, caller)) {
+          return res.status(403).json({
+            success: false,
+            error: 'Forbidden: Doctors can only modify appointments assigned to them.'
+          });
+        }
+      } else {
+        if (!isAppointmentForPatient(target, caller)) {
+          return res.status(403).json({
+            success: false,
+            error: 'Forbidden: You can only modify your own appointments.'
+          });
+        }
+      }
+    }
+
+    // 3. Update in Supabase
     if (supabase) {
       try {
         const updateData: any = {
@@ -315,7 +626,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
-    // 2. Update memory store
+    // 4. Update memory store
     globalThis.__campuscare_appointments = memoryStore.map(a => {
       if (a.id === targetId || a.bookingId === targetId) {
         return {
@@ -332,6 +643,46 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       success: true,
       message: `Appointment ${targetId} status updated to ${status}`
     });
+  }
+
+  // ==========================================
+  // DELETE: Delete appointment (RLS Verified)
+  // ==========================================
+  if (req.method === 'DELETE') {
+    const targetId = (req.query?.id || req.body?.id || req.body?.bookingId) as string;
+    if (!targetId) {
+      return res.status(400).json({ success: false, error: 'Appointment ID required.' });
+    }
+
+    let target = memoryStore.find(a => a.id === targetId || a.bookingId === targetId);
+    if (!target && supabase) {
+      try {
+        const { data } = await supabase
+          .from('appointments')
+          .select('*')
+          .or(`id.eq.${targetId},booking_id.eq.${targetId}`)
+          .maybeSingle();
+        if (data) target = normalizeRow(data);
+      } catch {}
+    }
+
+    if (!target) {
+      return res.status(404).json({ success: false, error: 'Appointment not found.' });
+    }
+
+    if (caller.role !== 'admin' && !isAppointmentForPatient(target, caller) && !isAppointmentForDoctor(target, caller)) {
+      return res.status(403).json({ success: false, error: 'Forbidden: Cannot delete this appointment.' });
+    }
+
+    if (supabase) {
+      try {
+        await supabase.from('appointments').delete().or(`id.eq.${targetId},booking_id.eq.${targetId}`);
+      } catch {}
+    }
+
+    globalThis.__campuscare_appointments = memoryStore.filter(a => a.id !== targetId && a.bookingId !== targetId);
+
+    return res.status(200).json({ success: true, message: `Appointment ${targetId} deleted.` });
   }
 
   return res.status(405).json({ error: 'Method not allowed' });

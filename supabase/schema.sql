@@ -421,37 +421,65 @@ CREATE POLICY "Users access own profile" ON users FOR ALL USING (auth.uid() = id
 CREATE POLICY "Students access own student profile" ON student_profiles FOR ALL USING (auth.uid() = user_id);
 CREATE POLICY "Doctors directory viewable" ON doctor_profiles FOR SELECT USING (true);
 
--- Appointments: Patients, Doctors, and Public Cross-Network Synchronization
+-- Appointments: Strict RLS for Patients, Assigned Doctors, and Administrators (NO anonymous or public bypass)
+DROP POLICY IF EXISTS "Patients and Doctors view appointments" ON appointments;
+DROP POLICY IF EXISTS "Public read appointments" ON appointments;
 CREATE POLICY "Patients and Doctors view appointments" ON appointments FOR SELECT USING (
-    auth.uid() = patient_id 
-    OR auth.uid() = doctor_id
-    OR EXISTS (
-        SELECT 1 FROM doctor_profiles dp 
-        WHERE dp.user_id = auth.uid() 
-        AND (dp.doctor_id = appointments.doctor_id::text OR appointments.doctor_id = dp.user_id)
+    (auth.uid() IS NOT NULL) AND (
+        auth.uid() = patient_id 
+        OR auth.uid() = doctor_id
+        OR EXISTS (
+            SELECT 1 FROM doctor_profiles dp 
+            WHERE dp.user_id = auth.uid() 
+            AND (dp.doctor_id = appointments.doctor_id::text OR appointments.doctor_id = dp.user_id)
+        )
+        OR EXISTS (
+            SELECT 1 FROM users u 
+            WHERE u.id = auth.uid() AND u.role = 'admin'
+        )
     )
-    OR EXISTS (
-        SELECT 1 FROM users u 
-        WHERE u.id = auth.uid() AND u.role = 'doctor'
-    )
-    OR true
 );
+
+DROP POLICY IF EXISTS "Patients create appointments" ON appointments;
+DROP POLICY IF EXISTS "Public insert appointments" ON appointments;
 CREATE POLICY "Patients create appointments" ON appointments FOR INSERT WITH CHECK (
-    true
+    (auth.uid() IS NOT NULL) AND (
+        auth.uid() = patient_id
+        OR EXISTS (
+            SELECT 1 FROM users u 
+            WHERE u.id = auth.uid() AND u.role = 'admin'
+        )
+    )
 );
+
+DROP POLICY IF EXISTS "Authorized update appointments" ON appointments;
+DROP POLICY IF EXISTS "Public update appointments" ON appointments;
 CREATE POLICY "Authorized update appointments" ON appointments FOR UPDATE USING (
-    auth.uid() = patient_id 
-    OR auth.uid() = doctor_id
-    OR EXISTS (
-        SELECT 1 FROM doctor_profiles dp 
-        WHERE dp.user_id = auth.uid() 
-        AND (dp.doctor_id = appointments.doctor_id::text OR appointments.doctor_id = dp.user_id)
+    (auth.uid() IS NOT NULL) AND (
+        auth.uid() = patient_id 
+        OR auth.uid() = doctor_id
+        OR EXISTS (
+            SELECT 1 FROM doctor_profiles dp 
+            WHERE dp.user_id = auth.uid() 
+            AND (dp.doctor_id = appointments.doctor_id::text OR appointments.doctor_id = dp.user_id)
+        )
+        OR EXISTS (
+            SELECT 1 FROM users u 
+            WHERE u.id = auth.uid() AND u.role = 'admin'
+        )
     )
-    OR EXISTS (
-        SELECT 1 FROM users u 
-        WHERE u.id = auth.uid() AND u.role = 'doctor'
+);
+
+DROP POLICY IF EXISTS "Authorized delete appointments" ON appointments;
+CREATE POLICY "Authorized delete appointments" ON appointments FOR DELETE USING (
+    (auth.uid() IS NOT NULL) AND (
+        auth.uid() = patient_id 
+        OR auth.uid() = doctor_id
+        OR EXISTS (
+            SELECT 1 FROM users u 
+            WHERE u.id = auth.uid() AND u.role = 'admin'
+        )
     )
-    OR true
 );
 
 -- Prescriptions: Patient or Issuing Doctor

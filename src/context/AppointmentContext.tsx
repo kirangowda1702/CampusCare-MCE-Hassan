@@ -3,6 +3,7 @@ import { Appointment, AppointmentStatus, ConsultationType } from '../types';
 import { mockAppointments } from '../data/appointments';
 import { appointmentService, isAppointmentForDoctor } from '../services/appointmentService';
 import { appointmentReminderService } from '../services/appointmentReminderService';
+import { useAuth } from './AuthContext';
 
 interface AppointmentContextType {
   appointments: Appointment[];
@@ -41,19 +42,20 @@ interface AppointmentContextType {
 const AppointmentContext = createContext<AppointmentContextType | undefined>(undefined);
 
 export const AppointmentProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [appointments, setAppointments] = useState<Appointment[]>(() => {
     const saved = localStorage.getItem('campuscare_appointments');
     if (saved) {
-      try { return JSON.parse(saved); } catch (e) { return mockAppointments; }
+      try { return JSON.parse(saved); } catch (e) { return []; }
     }
-    return mockAppointments;
+    return [];
   });
 
   const refreshAppointments = async () => {
     try {
-      const data = await appointmentService.getAppointments();
-      if (Array.isArray(data) && data.length > 0) {
+      const data = await appointmentService.getAppointments(user);
+      if (Array.isArray(data)) {
         setAppointments(data);
       }
     } catch (e) {
@@ -113,7 +115,7 @@ export const AppointmentProvider: React.FC<{ children: React.ReactNode }> = ({ c
       stopReminderDaemon();
       window.removeEventListener('storage', handleStorageChange);
     };
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     localStorage.setItem('campuscare_appointments', JSON.stringify(appointments));
@@ -147,8 +149,9 @@ export const AppointmentProvider: React.FC<{ children: React.ReactNode }> = ({ c
   }): Promise<Appointment> => {
     const newApt = await appointmentService.createAppointment({
       ...data,
+      patientId: data.patientId || user?.id || 'usr-student-1',
       status: data.status || 'pending'
-    });
+    }, user);
     setAppointments(prev => [newApt, ...prev.filter(a => a.id !== newApt.id)]);
     return newApt;
   };
@@ -157,7 +160,7 @@ export const AppointmentProvider: React.FC<{ children: React.ReactNode }> = ({ c
     setAppointments(prev =>
       prev.map(a => (a.id === id || a.bookingId === id ? { ...a, status, notes: notes !== undefined ? notes : a.notes } : a))
     );
-    await appointmentService.updateAppointmentStatus(id, status, notes);
+    await appointmentService.updateAppointmentStatus(id, status, notes, user);
   };
 
   const cancelAppointment = async (id: string) => {

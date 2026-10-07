@@ -79,66 +79,135 @@ export function isAppointmentForDoctor(
   const userDocId = (user.doctorId || '').trim().toUpperCase();
   const userId = (user.id || '').trim().toUpperCase();
 
+  // Explicit doctor isolation guards:
+  const isKiranDoctor =
+    userDocId === 'DOC001' ||
+    userId === 'USR-DOCTOR-KIRAN' ||
+    userId === 'D0000001-0000-0000-0000-000000000001' ||
+    (user.email || '').toLowerCase().includes('kiran') ||
+    (user.fullName || '').toLowerCase().includes('kiran');
+
+  const isMadanDoctor =
+    userDocId === 'DOC002' ||
+    userId === 'USR-DOCTOR-MADAN' ||
+    userId === 'D0000002-0000-0000-0000-000000000002' ||
+    (user.email || '').toLowerCase().includes('madan') ||
+    (user.fullName || '').toLowerCase().includes('madan');
+
+  if (isKiranDoctor) {
+    if (
+      aptDocId === 'DOC002' ||
+      aptDocId === 'USR-DOCTOR-MADAN' ||
+      aptDocId === 'D0000002-0000-0000-0000-000000000002' ||
+      (appointment.doctorName || '').toLowerCase().includes('madan')
+    ) {
+      return false;
+    }
+    if (
+      aptDocId === 'DOC001' ||
+      aptDocId === 'USR-DOCTOR-KIRAN' ||
+      aptDocId === 'D0000001-0000-0000-0000-000000000001' ||
+      aptDocId === 'DOC-1' ||
+      (appointment.doctorName || '').toLowerCase().includes('kiran')
+    ) {
+      return true;
+    }
+  }
+
+  if (isMadanDoctor) {
+    if (
+      aptDocId === 'DOC001' ||
+      aptDocId === 'USR-DOCTOR-KIRAN' ||
+      aptDocId === 'D0000001-0000-0000-0000-000000000001' ||
+      (appointment.doctorName || '').toLowerCase().includes('kiran')
+    ) {
+      return false;
+    }
+    if (
+      aptDocId === 'DOC002' ||
+      aptDocId === 'USR-DOCTOR-MADAN' ||
+      aptDocId === 'D0000002-0000-0000-0000-000000000002' ||
+      aptDocId === 'DOC-2' ||
+      (appointment.doctorName || '').toLowerCase().includes('madan')
+    ) {
+      return true;
+    }
+  }
+
   // 1. Direct doctorId match (e.g. DOC001 === DOC001)
   if (userDocId && (aptDocId === userDocId || aptDocId.includes(userDocId))) return true;
 
   // 2. Direct user.id match
   if (userId && (aptDocId === userId || appointment.doctorId === user.id)) return true;
 
-  // 3. Known doctor accounts mapping (Dr. Kiran Gowda / DOC001)
-  const emailLower = (user.email || '').toLowerCase();
-  const isKiranDoctor =
-    userDocId === 'DOC001' ||
-    userId === 'USR-DOCTOR-KIRAN' ||
-    userId === 'D0000001-0000-0000-0000-000000000001' ||
-    emailLower.includes('kiran') ||
-    (user.fullName || '').toLowerCase().includes('kiran');
-
-  if (isKiranDoctor) {
-    if (
-      aptDocId === 'DOC001' ||
-      aptDocId === 'USR-DOCTOR-KIRAN' ||
-      aptDocId === 'D0000001-0000-0000-0000-000000000001' ||
-      aptDocId === 'DOC-1'
-    ) {
-      return true;
-    }
-    const cleanDocName = (appointment.doctorName || '').toLowerCase();
-    if (cleanDocName.includes('kiran')) return true;
-  }
-
-  // 4. Known doctor accounts mapping (Dr. Madan S K / DOC002)
-  const isMadanDoctor =
-    userDocId === 'DOC002' ||
-    userId === 'USR-DOCTOR-MADAN' ||
-    userId === 'D0000002-0000-0000-0000-000000000002' ||
-    emailLower.includes('madan') ||
-    (user.fullName || '').toLowerCase().includes('madan');
-
-  if (isMadanDoctor) {
-    if (
-      aptDocId === 'DOC002' ||
-      aptDocId === 'USR-DOCTOR-MADAN' ||
-      aptDocId === 'D0000002-0000-0000-0000-000000000002'
-    ) {
-      return true;
-    }
-    const cleanDocName = (appointment.doctorName || '').toLowerCase();
-    if (cleanDocName.includes('madan')) return true;
-  }
-
-  // 5. Name-based alphanumeric match
+  // 3. Name-based alphanumeric match
   if (user.fullName && appointment.doctorName) {
     const cleanUser = user.fullName.toLowerCase().replace(/^dr[\.\s]+/i, '').replace(/[^a-z0-9]/g, '');
     const cleanDoc = appointment.doctorName.toLowerCase().replace(/^dr[\.\s]+/i, '').replace(/[^a-z0-9]/g, '');
     if (cleanUser.length >= 3 && cleanDoc.length >= 3) {
-      if (cleanUser === cleanDoc || cleanUser.includes(cleanDoc) || cleanDoc.includes(cleanUser)) {
+      if (cleanUser === cleanDoc) {
         return true;
       }
     }
   }
 
   return false;
+}
+
+export function isAppointmentForPatient(
+  appointment: Appointment,
+  user: { id?: string; email?: string; usn?: string } | null
+): boolean {
+  if (!user || !user.id) return false;
+
+  const patientId = (appointment.patientId || '').trim();
+  if (patientId && patientId.toLowerCase() === user.id.toLowerCase()) return true;
+
+  if (user.email && appointment.patientEmail) {
+    const aptEmail = appointment.patientEmail.trim().toLowerCase();
+    if (aptEmail === user.email.toLowerCase()) return true;
+  }
+
+  if (user.usn && appointment.patientUSNorEmpId) {
+    const aptUSN = appointment.patientUSNorEmpId.trim().toUpperCase();
+    if (aptUSN === user.usn.toUpperCase()) return true;
+  }
+
+  return false;
+}
+
+export async function getAuthHeaders(userContext?: any): Promise<Record<string, string>> {
+  const headers: Record<string, string> = {
+    'Accept': 'application/json'
+  };
+
+  let user = userContext;
+  if (!user && typeof localStorage !== 'undefined') {
+    try {
+      const saved = localStorage.getItem('campuscare_user');
+      if (saved) user = JSON.parse(saved);
+    } catch {}
+  }
+
+  if (user) {
+    if (user.id) headers['x-user-id'] = user.id;
+    if (user.role) headers['x-user-role'] = user.role;
+    if (user.doctorId) headers['x-doctor-id'] = user.doctorId;
+    if (user.email) headers['x-user-email'] = user.email;
+    if (user.fullName) headers['x-user-name'] = user.fullName;
+    if (user.usn) headers['x-user-usn'] = user.usn;
+  }
+
+  if (isSupabaseConfigured) {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.access_token) {
+        headers['Authorization'] = `Bearer ${session.access_token}`;
+      }
+    } catch {}
+  }
+
+  return headers;
 }
 
 export function normalizeAppointment(d: any): Appointment {
@@ -212,9 +281,19 @@ export function normalizeAppointment(d: any): Appointment {
 }
 
 export const appointmentService = {
-  async getAppointments(): Promise<Appointment[]> {
+  async getAppointments(userContext?: any): Promise<Appointment[]> {
     const appointmentMap = new Map<string, Appointment>();
     let databaseRecordsFound = false;
+
+    let resolvedUser = userContext;
+    if (!resolvedUser && typeof localStorage !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('campuscare_user');
+        if (saved) resolvedUser = JSON.parse(saved);
+      } catch {}
+    }
+
+    const authHeaders = await getAuthHeaders(resolvedUser);
 
     // 1. Authoritative cross-network sync via centralized serverless API endpoint (/api/appointments)
     // Ensures real appointments booked on Mobile Data are immediately visible to Doctor on Wi-Fi
@@ -222,7 +301,7 @@ export const appointmentService = {
       if (typeof window !== 'undefined' && typeof fetch !== 'undefined') {
         const apiRes = await fetch('/api/appointments', {
           method: 'GET',
-          headers: { 'Accept': 'application/json' },
+          headers: authHeaders,
           signal: typeof AbortSignal !== 'undefined' && AbortSignal.timeout ? AbortSignal.timeout(5000) : undefined
         });
         if (apiRes.ok) {
@@ -286,9 +365,18 @@ export const appointmentService = {
       });
     }
 
-    const combined = Array.from(new Set(appointmentMap.values())).sort(
+    let combined = Array.from(new Set(appointmentMap.values())).sort(
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
+
+    // Defense-in-depth: Scoped RLS isolation on client when userContext is explicitly provided
+    if (userContext && userContext.role !== 'admin') {
+      if (userContext.role === 'doctor' || userContext.doctorId) {
+        combined = combined.filter(a => isAppointmentForDoctor(a, userContext));
+      } else if (userContext.role === 'student' || userContext.id) {
+        combined = combined.filter(a => isAppointmentForPatient(a, userContext));
+      }
+    }
 
     if (combined.length > 0) {
       inMemoryAppointments = combined;
@@ -299,7 +387,7 @@ export const appointmentService = {
     return inMemoryAppointments;
   },
 
-  async createAppointment(appointment: Omit<Appointment, 'id' | 'bookingId' | 'createdAt'>): Promise<Appointment> {
+  async createAppointment(appointment: Omit<Appointment, 'id' | 'bookingId' | 'createdAt'>, userContext?: any): Promise<Appointment> {
     // 1. Past date validation
     if (!appointment.appointmentDate || isDateInPast(appointment.appointmentDate)) {
       throw new Error('Cannot book an appointment for a past date. Please select a valid future date.');
@@ -311,7 +399,7 @@ export const appointmentService = {
     }
 
     // 3. Double booking prevention check
-    const existing = await this.getAppointments();
+    const existing = await this.getAppointments(userContext);
     const isDoubleBooked = existing.some(
       a =>
         a.doctorId === appointment.doctorId &&
@@ -340,12 +428,14 @@ export const appointmentService = {
     };
 
     // 4. Authoritative persistence to centralized serverless API (/api/appointments)
-    // Synchronizes across separate networks (Mobile Data <-> Wi-Fi)
+    // Synchronizes across separate networks (Mobile Data <-> Wi-Fi) with user identity headers
     try {
       if (typeof window !== 'undefined' && typeof fetch !== 'undefined') {
+        const callerContext = userContext || { id: appointment.patientId, role: appointment.patientRole, email: appointment.patientEmail };
+        const postHeaders = await getAuthHeaders(callerContext);
         await fetch('/api/appointments', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { ...postHeaders, 'Content-Type': 'application/json' },
           body: JSON.stringify(newApt),
           signal: typeof AbortSignal !== 'undefined' && AbortSignal.timeout ? AbortSignal.timeout(6000) : undefined
         });
@@ -443,16 +533,17 @@ export const appointmentService = {
     return newApt;
   },
 
-  async updateAppointmentStatus(id: string, status: AppointmentStatus, notes?: string): Promise<void> {
-    const existing = await this.getAppointments();
+  async updateAppointmentStatus(id: string, status: AppointmentStatus, notes?: string, userContext?: any): Promise<void> {
+    const existing = await this.getAppointments(userContext);
     const target = existing.find(a => a.id === id || a.bookingId === id);
 
     // 1. Authoritative update on centralized cloud API (/api/appointments)
     try {
       if (typeof window !== 'undefined' && typeof fetch !== 'undefined') {
+        const patchHeaders = await getAuthHeaders(userContext);
         await fetch('/api/appointments', {
           method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { ...patchHeaders, 'Content-Type': 'application/json' },
           body: JSON.stringify({ id, bookingId: target?.bookingId, status, notes }),
           signal: typeof AbortSignal !== 'undefined' && AbortSignal.timeout ? AbortSignal.timeout(6000) : undefined
         });
