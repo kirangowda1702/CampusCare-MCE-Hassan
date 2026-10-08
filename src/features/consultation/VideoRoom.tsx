@@ -23,6 +23,10 @@ import { useNavigate } from 'react-router-dom';
 import { 
   RealtimeSignalingChannel, 
   getWebRTCConfiguration, 
+  fetchDynamicIceServers,
+  getIceTransportPolicy,
+  parseCandidateType,
+  hasTurnRelay,
   isTurnConfigured,
   consultationSessionService,
   SignalPayload 
@@ -268,6 +272,7 @@ export const VideoRoom: React.FC<VideoRoomProps> = ({ appointment }) => {
 
   // 3. WebRTC Peer Connection & Realtime Signaling (Perfect Negotiation Pattern)
   useEffect(() => {
+    let isMounted = true;
     const currentUserId = user?.id || `usr-${Date.now()}`;
     const currentUserName = user?.fullName || (isDoctor ? appointment.doctorName : appointment.patientName);
     const currentUserRole = role || (isDoctor ? 'doctor' : 'student');
@@ -286,6 +291,9 @@ export const VideoRoom: React.FC<VideoRoomProps> = ({ appointment }) => {
       currentUserName
     );
     signalingRef.current = signaling;
+
+    const transportPolicy = getIceTransportPolicy();
+    console.log('[WebRTC] ICE transport policy:', transportPolicy);
 
     const rtcConfig = getWebRTCConfiguration();
     const isTurnPresent = isTurnConfigured();
@@ -313,6 +321,21 @@ export const VideoRoom: React.FC<VideoRoomProps> = ({ appointment }) => {
       pc = new RTCPeerConnection(rtcConfig);
       peerConnectionRef.current = pc;
 
+      // Asynchronously fetch dynamic ICE servers from /api/ice and update PeerConnection
+      fetchDynamicIceServers(user).then(dynamicServers => {
+        if (!isMounted || !pc) return;
+        const turnActive = hasTurnRelay(dynamicServers);
+        console.log('[WebRTC] Dynamic ICE servers updated. TURN Active:', turnActive);
+        try {
+          pc.setConfiguration({
+            iceServers: dynamicServers,
+            iceTransportPolicy: transportPolicy
+          });
+        } catch (e) {
+          console.warn('[WebRTC] PeerConnection setConfiguration warning:', e);
+        }
+      });
+
       // Log all WebRTC lifecycle state transitions
       pc.onsignalingstatechange = () => {
         console.log('[WebRTC] signalingState:', pc?.signalingState);
@@ -320,10 +343,12 @@ export const VideoRoom: React.FC<VideoRoomProps> = ({ appointment }) => {
 
       pc.onicegatheringstatechange = () => {
         console.log('[WebRTC] iceGatheringState:', pc?.iceGatheringState);
+        console.log('[WebRTC] ICE_GATHERING_STATE:', pc?.iceGatheringState);
       };
 
       pc.oniceconnectionstatechange = () => {
         console.log('[WebRTC] ICE state:', pc?.iceConnectionState);
+        console.log('[WebRTC] ICE_CONNECTION_STATE:', pc?.iceConnectionState);
         if (pc?.iceConnectionState === 'connected' || pc?.iceConnectionState === 'completed') {
           setPeerConnected(true);
           setPeerLeft(false);
@@ -342,6 +367,7 @@ export const VideoRoom: React.FC<VideoRoomProps> = ({ appointment }) => {
         if (!pc) return;
         const state = pc.connectionState;
         console.log('[WebRTC] Connection state:', state);
+        console.log('[WebRTC] PEER_CONNECTION_STATE:', state);
         if (state === 'connected') {
           setPeerConnected(true);
           setPeerLeft(false);
@@ -372,6 +398,8 @@ export const VideoRoom: React.FC<VideoRoomProps> = ({ appointment }) => {
       // ICE Candidate Handler
       pc.onicecandidate = event => {
         if (event.candidate) {
+          const candType = parseCandidateType(event.candidate.candidate);
+          console.log('[WebRTC] ICE_CANDIDATE_TYPE:', candType);
           console.log('[WebRTC] ICE candidate sent:', event.candidate.candidate);
           localCandidatesRef.current.push(event.candidate.toJSON());
           signaling.sendSignal('candidate', event.candidate.toJSON());
@@ -521,6 +549,8 @@ export const VideoRoom: React.FC<VideoRoomProps> = ({ appointment }) => {
             await processQueuedCandidates(pc);
             resendLocalCandidates();
           } else if (payload.type === 'candidate' && payload.data && pc) {
+            const candType = parseCandidateType(payload.data?.candidate);
+            console.log('[WebRTC] ICE_CANDIDATE_TYPE:', candType);
             console.log('[WebRTC] ICE candidate received:', payload.data?.candidate || payload.data);
             try {
               if (pc.remoteDescription && pc.remoteDescription.type) {
@@ -585,6 +615,7 @@ export const VideoRoom: React.FC<VideoRoomProps> = ({ appointment }) => {
 
     // Cleanup on unmount
     return () => {
+      isMounted = false;
       console.log('[WebRTC] Cleaning up consultation room:', appointment.id);
       
       // Record session end

@@ -1,7 +1,40 @@
 import { supabase, isSupabaseConfigured } from './supabase';
+import { getAuthHeaders } from './appointmentService';
 
 export interface WebRTCConfig {
   iceServers: RTCIceServer[];
+  iceTransportPolicy?: RTCIceTransportPolicy;
+}
+
+export function parseCandidateType(candidateStr?: string): string {
+  if (!candidateStr) return 'unknown';
+  const match = candidateStr.match(/\btyp\s+([a-zA-Z0-9]+)\b/i);
+  return match ? match[1].toLowerCase() : 'unknown';
+}
+
+export function getIceTransportPolicy(): RTCIceTransportPolicy {
+  if (typeof window !== 'undefined') {
+    const search = window.location.search || '';
+    if (search.includes('relay=true') || search.includes('policy=relay')) {
+      return 'relay';
+    }
+  }
+  if (typeof localStorage !== 'undefined') {
+    try {
+      if (localStorage.getItem('campuscare_ice_relay') === 'true') {
+        return 'relay';
+      }
+    } catch {}
+  }
+  return 'all';
+}
+
+export function hasTurnRelay(iceServers: RTCIceServer[]): boolean {
+  if (!Array.isArray(iceServers)) return false;
+  return iceServers.some(s => {
+    const urls = Array.isArray(s.urls) ? s.urls : [s.urls];
+    return urls.some(u => typeof u === 'string' && (u.startsWith('turn:') || u.startsWith('turns:')));
+  });
 }
 
 export function getWebRTCConfiguration(): WebRTCConfig {
@@ -26,7 +59,55 @@ export function getWebRTCConfiguration(): WebRTCConfig {
     });
   }
 
-  return { iceServers };
+  const transportPolicy = getIceTransportPolicy();
+  return { iceServers, iceTransportPolicy: transportPolicy };
+}
+
+export async function fetchDynamicIceServers(userContext?: any): Promise<RTCIceServer[]> {
+  console.log('[WebRTC] TURN_FETCH_START');
+  const defaultStun = (
+    (typeof import.meta !== 'undefined' && import.meta.env?.VITE_STUN_SERVER) ||
+    'stun:stun.l.google.com:19302'
+  );
+
+  try {
+    if (typeof fetch !== 'undefined') {
+      const headers = await getAuthHeaders(userContext);
+      const res = await fetch('/api/ice', {
+        method: 'GET',
+        headers,
+        signal: typeof AbortSignal !== 'undefined' && AbortSignal.timeout ? AbortSignal.timeout(5000) : undefined
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data && Array.isArray(data.iceServers) && data.iceServers.length > 0) {
+          console.log('[WebRTC] TURN_FETCH_SUCCESS');
+          console.log('[WebRTC] ICE_SERVER_COUNT:', data.iceServers.length);
+
+          // Ensure fallback STUN server is present in the list
+          const hasStun = data.iceServers.some((s: any) => {
+            const urls = Array.isArray(s.urls) ? s.urls : [s.urls];
+            return urls.some((u: string) => typeof u === 'string' && u.startsWith('stun:'));
+          });
+
+          const finalServers: RTCIceServer[] = hasStun
+            ? data.iceServers
+            : [{ urls: defaultStun }, ...data.iceServers];
+
+          return finalServers;
+        }
+      }
+      console.warn('[WebRTC] TURN_FETCH_FAILED (HTTP status:', res.status, ')');
+    }
+  } catch (err: any) {
+    console.warn('[WebRTC] TURN_FETCH_FAILED:', err?.message || 'Network error');
+  }
+
+  // Fallback to static configuration
+  const fallback = getWebRTCConfiguration().iceServers;
+  console.log('[WebRTC] ICE_SERVER_COUNT:', fallback.length, '(Fallback STUN)');
+  return fallback;
 }
 
 export function isTurnConfigured(): boolean {
