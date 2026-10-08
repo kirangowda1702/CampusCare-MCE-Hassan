@@ -143,6 +143,7 @@ export type SignalingCallback = (payload: SignalPayload) => void;
 export type SignalingStatusCallback = (status: string, err?: any) => void;
 
 export class RealtimeSignalingChannel {
+  private roomId: string;
   private channelName: string;
   private channel: any = null;
   private broadcastChannel: BroadcastChannel | null = null;
@@ -152,16 +153,22 @@ export class RealtimeSignalingChannel {
   private currentUserRole?: string;
   private currentUserName?: string;
   private isSubscribed: boolean = false;
+  private isPeerConnected: boolean = false;
   private outboxQueue: SignalPayload[] = [];
   private seenMessageIds: Set<string> = new Set();
+  private pollInterval: any = null;
+  private heartbeatInterval: any = null;
+  private lastPollTime: number = Date.now() - 30000;
 
   constructor(roomId: string, currentUserId: string, currentUserRole?: string, currentUserName?: string) {
-    // Canonical room channel name: consultation:{roomId}
     const cleanRoomId = (roomId || 'default-room').trim();
+    this.roomId = cleanRoomId;
     this.channelName = `consultation:${cleanRoomId}`;
     this.currentUserId = currentUserId;
     this.currentUserRole = currentUserRole;
     this.currentUserName = currentUserName;
+
+    console.log('[WebRTC] SIGNALING_CHANNEL:', this.channelName);
 
     // Local BroadcastChannel for same-origin multi-tab/window testing
     if (typeof BroadcastChannel !== 'undefined') {
@@ -179,11 +186,19 @@ export class RealtimeSignalingChannel {
   }
 
   public isReady(): boolean {
-    return this.isSubscribed || (!isSupabaseConfigured && Boolean(this.broadcastChannel));
+    return this.isSubscribed || Boolean(this.broadcastChannel);
   }
 
   public getChannelName(): string {
     return this.channelName;
+  }
+
+  public setPeerConnected(connected: boolean) {
+    this.isPeerConnected = connected;
+    if (connected && this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval);
+      this.heartbeatInterval = null;
+    }
   }
 
   private handleIncomingPayload(payload: SignalPayload, source: string) {
@@ -193,7 +208,7 @@ export class RealtimeSignalingChannel {
     if (payload.msgId) {
       if (this.seenMessageIds.has(payload.msgId)) return;
       this.seenMessageIds.add(payload.msgId);
-      if (this.seenMessageIds.size > 200) {
+      if (this.seenMessageIds.size > 300) {
         const first = this.seenMessageIds.values().next().value;
         if (first) this.seenMessageIds.delete(first);
       }
@@ -209,6 +224,31 @@ export class RealtimeSignalingChannel {
     this.onMessageCallback = callback;
     this.onStatusCallback = onStatusChange || null;
 
+    const onChannelReady = () => {
+      if (this.isSubscribed) return;
+      this.isSubscribed = true;
+      console.log('[WebRTC] CHANNEL_SUBSCRIBED:', this.channelName);
+      if (this.onStatusCallback) {
+        this.onStatusCallback('SUBSCRIBED');
+      }
+
+      // Flush queued signals
+      while (this.outboxQueue.length > 0) {
+        const queued = this.outboxQueue.shift();
+        if (queued) {
+          this.dispatchSupabaseSignal(queued);
+        }
+      }
+
+      // Proactively broadcast presence
+      this.sendSignal('peer-joined', {
+        userId: this.currentUserId,
+        role: this.currentUserRole,
+        name: this.currentUserName
+      });
+    };
+
+    // 1. Setup Supabase Realtime channel if configured
     if (isSupabaseConfigured) {
       try {
         this.channel = supabase.channel(this.channelName, {
@@ -223,48 +263,74 @@ export class RealtimeSignalingChannel {
           })
           .subscribe((status: string, err?: any) => {
             console.log(`[WebRTC] Supabase Realtime subscription status [${this.channelName}]:`, status, err || '');
-            if (this.onStatusCallback) {
-              this.onStatusCallback(status, err);
-            }
-
             if (status === 'SUBSCRIBED') {
-              this.isSubscribed = true;
-              
-              // Flush any queued signals
-              while (this.outboxQueue.length > 0) {
-                const queued = this.outboxQueue.shift();
-                if (queued) {
-                  this.dispatchSupabaseSignal(queued);
-                }
-              }
-
-              // Broadcast presence to room
-              this.sendSignal('peer-joined', {
-                userId: this.currentUserId,
-                role: this.currentUserRole,
-                name: this.currentUserName
-              });
+              onChannelReady();
             } else if (status === 'TIMED_OUT' || status === 'CHANNEL_ERROR') {
-              console.warn(`[WebRTC] Supabase Realtime subscription issue (${status}). Retrying channel...`);
+              console.warn(`[WebRTC] Supabase Realtime subscription issue (${status}). Falling back to cloud signaling relay.`);
+              onChannelReady();
             }
           });
       } catch (err) {
         console.warn('[WebRTC] Error configuring Supabase Realtime channel:', err);
+        onChannelReady();
       }
-    } else {
-      console.log('[WebRTC] Supabase Realtime not configured. Operating via local WebRTC BroadcastChannel.');
-      this.isSubscribed = true;
-      if (this.onStatusCallback) {
-        this.onStatusCallback('SUBSCRIBED');
-      }
-      setTimeout(() => {
-        this.sendSignal('peer-joined', {
+    }
+
+    // Safety fallback: If not yet subscribed after 1000ms, mark ready via relay
+    setTimeout(() => {
+      onChannelReady();
+    }, 1000);
+
+    // 2. Setup Serverless Cloud Signaling Relay Polling (Ensures cross-network arrival)
+    this.startRelayPolling();
+
+    // 3. Proactive Presence Heartbeat while waiting for peer connection
+    this.heartbeatInterval = setInterval(() => {
+      if (!this.isPeerConnected && this.isSubscribed) {
+        this.sendSignal('peer-presence', {
           userId: this.currentUserId,
           role: this.currentUserRole,
           name: this.currentUserName
         });
-      }, 100);
-    }
+      }
+    }, 2500);
+  }
+
+  private startRelayPolling() {
+    if (typeof window === 'undefined' || typeof fetch === 'undefined') return;
+
+    this.pollInterval = setInterval(async () => {
+      if (this.isPeerConnected) {
+        if (this.pollInterval) {
+          clearInterval(this.pollInterval);
+          this.pollInterval = null;
+        }
+        return;
+      }
+
+      try {
+        const headers = await getAuthHeaders();
+        const res = await fetch(`/api/appointments?action=signal_poll&roomId=${encodeURIComponent(this.roomId)}&since=${this.lastPollTime}`, {
+          method: 'GET',
+          headers,
+          signal: typeof AbortSignal !== 'undefined' && AbortSignal.timeout ? AbortSignal.timeout(3000) : undefined
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.serverTime) {
+            this.lastPollTime = Math.max(this.lastPollTime, data.serverTime - 500);
+          }
+          if (Array.isArray(data?.signals)) {
+            data.signals.forEach((sig: SignalPayload) => {
+              this.handleIncomingPayload(sig, 'Cloud Relay');
+            });
+          }
+        }
+      } catch (e) {
+        // quiet retry
+      }
+    }, 1200);
   }
 
   private dispatchSupabaseSignal(payload: SignalPayload) {
@@ -277,6 +343,27 @@ export class RealtimeSignalingChannel {
         console.warn('[WebRTC] Supabase broadcast send error:', e);
       });
     }
+  }
+
+  private dispatchRelaySignal(payload: SignalPayload) {
+    if (typeof window === 'undefined' || typeof fetch === 'undefined') return;
+    getAuthHeaders().then(headers => {
+      fetch('/api/appointments', {
+        method: 'POST',
+        headers: {
+          ...headers,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          action: 'signal_send',
+          roomId: this.roomId,
+          payload
+        }),
+        signal: typeof AbortSignal !== 'undefined' && AbortSignal.timeout ? AbortSignal.timeout(4000) : undefined
+      }).catch(() => {
+        // quiet retry
+      });
+    }).catch(() => {});
   }
 
   public sendSignal(type: SignalType, data?: any) {
@@ -313,9 +400,21 @@ export class RealtimeSignalingChannel {
         this.outboxQueue.push(payload);
       }
     }
+
+    // 3. Send via Serverless Cloud Signaling Relay
+    this.dispatchRelaySignal(payload);
   }
 
   public unsubscribe() {
+    if (this.pollInterval) {
+      clearInterval(this.pollInterval);
+      this.pollInterval = null;
+    }
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval);
+      this.heartbeatInterval = null;
+    }
+
     try {
       this.sendSignal('peer-left', { userId: this.currentUserId });
     } catch (e) {
@@ -334,10 +433,10 @@ export class RealtimeSignalingChannel {
     if (this.channel && isSupabaseConfigured) {
       try {
         supabase.removeChannel(this.channel);
+        this.channel = null;
       } catch (e) {
         // ignore
       }
-      this.channel = null;
       this.isSubscribed = false;
     }
   }

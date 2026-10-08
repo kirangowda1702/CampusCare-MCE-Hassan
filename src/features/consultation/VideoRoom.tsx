@@ -292,6 +292,9 @@ export const VideoRoom: React.FC<VideoRoomProps> = ({ appointment }) => {
     );
     signalingRef.current = signaling;
 
+    console.log('[WebRTC] ROOM_ID:', canonicalRoomId);
+    console.log('[WebRTC] SIGNALING_CHANNEL:', `consultation:${canonicalRoomId}`);
+
     const transportPolicy = getIceTransportPolicy();
     console.log('[WebRTC] ICE transport policy:', transportPolicy);
 
@@ -303,6 +306,7 @@ export const VideoRoom: React.FC<VideoRoomProps> = ({ appointment }) => {
     let isMakingOffer = false;
     let isIgnoringOffer = false;
     let isSettingRemoteAnswerPending = false;
+    let triggerOffer: (() => Promise<void>) | null = null;
     // Doctor is impolite peer (primary caller), Student/Patient is polite peer
     const isPolite = !isDoctor;
 
@@ -311,6 +315,7 @@ export const VideoRoom: React.FC<VideoRoomProps> = ({ appointment }) => {
       if (localCandidatesRef.current.length > 0) {
         console.log(`[WebRTC] Re-sending ${localCandidatesRef.current.length} cached local ICE candidates to peer...`);
         localCandidatesRef.current.forEach(cand => {
+          console.log('[WebRTC] ICE_SENT:', cand.candidate);
           console.log('[WebRTC] ICE candidate sent:', cand.candidate);
           signaling.sendSignal('candidate', cand);
         });
@@ -348,9 +353,11 @@ export const VideoRoom: React.FC<VideoRoomProps> = ({ appointment }) => {
 
       pc.oniceconnectionstatechange = () => {
         console.log('[WebRTC] ICE state:', pc?.iceConnectionState);
+        console.log('[WebRTC] ICE_STATE:', pc?.iceConnectionState);
         console.log('[WebRTC] ICE_CONNECTION_STATE:', pc?.iceConnectionState);
         if (pc?.iceConnectionState === 'connected' || pc?.iceConnectionState === 'completed') {
           setPeerConnected(true);
+          signalingRef.current?.setPeerConnected(true);
           setPeerLeft(false);
           setSignalingStatus('Live Encrypted P2P Stream Established');
         } else if (pc?.iceConnectionState === 'failed') {
@@ -367,9 +374,11 @@ export const VideoRoom: React.FC<VideoRoomProps> = ({ appointment }) => {
         if (!pc) return;
         const state = pc.connectionState;
         console.log('[WebRTC] Connection state:', state);
+        console.log('[WebRTC] CONNECTION_STATE:', state);
         console.log('[WebRTC] PEER_CONNECTION_STATE:', state);
         if (state === 'connected') {
           setPeerConnected(true);
+          signalingRef.current?.setPeerConnected(true);
           setPeerLeft(false);
           setSignalingStatus('Live Encrypted P2P Stream Established');
 
@@ -400,6 +409,7 @@ export const VideoRoom: React.FC<VideoRoomProps> = ({ appointment }) => {
         if (event.candidate) {
           const candType = parseCandidateType(event.candidate.candidate);
           console.log('[WebRTC] ICE_CANDIDATE_TYPE:', candType);
+          console.log('[WebRTC] ICE_SENT:', event.candidate.candidate);
           console.log('[WebRTC] ICE candidate sent:', event.candidate.candidate);
           localCandidatesRef.current.push(event.candidate.toJSON());
           signaling.sendSignal('candidate', event.candidate.toJSON());
@@ -423,6 +433,7 @@ export const VideoRoom: React.FC<VideoRoomProps> = ({ appointment }) => {
           });
         }
         setPeerConnected(true);
+        signalingRef.current?.setPeerConnected(true);
         setPeerLeft(false);
       };
 
@@ -435,7 +446,9 @@ export const VideoRoom: React.FC<VideoRoomProps> = ({ appointment }) => {
           const offer = await pc.createOffer();
           if (pc.signalingState !== 'stable') return;
           await pc.setLocalDescription(offer);
+          console.log('[WebRTC] OFFER_CREATED');
           console.log('[WebRTC] Offer created');
+          console.log('[WebRTC] OFFER_SENT');
           signaling.sendSignal('offer', pc.localDescription);
         } catch (err) {
           console.warn('[WebRTC] Negotiation offer error:', err);
@@ -445,12 +458,13 @@ export const VideoRoom: React.FC<VideoRoomProps> = ({ appointment }) => {
       };
 
       // Helper function to trigger offer creation or re-broadcast existing offer
-      const triggerOffer = async () => {
+      triggerOffer = async () => {
         if (!pc) return;
         try {
           if (pc.signalingState !== 'stable') {
             if (pc.signalingState === 'have-local-offer' && pc.localDescription) {
               console.log('[WebRTC] Signaling state is have-local-offer, re-broadcasting existing local offer');
+              console.log('[WebRTC] OFFER_SENT');
               signaling.sendSignal('offer', pc.localDescription);
               resendLocalCandidates();
             } else {
@@ -464,7 +478,9 @@ export const VideoRoom: React.FC<VideoRoomProps> = ({ appointment }) => {
             offerToReceiveVideo: true
           });
           await pc.setLocalDescription(offer);
+          console.log('[WebRTC] OFFER_CREATED');
           console.log('[WebRTC] Offer created');
+          console.log('[WebRTC] OFFER_SENT');
           signaling.sendSignal('offer', pc.localDescription);
         } catch (err) {
           console.warn('[WebRTC] triggerOffer error:', err);
@@ -479,6 +495,7 @@ export const VideoRoom: React.FC<VideoRoomProps> = ({ appointment }) => {
 
         try {
           if (payload.type === 'peer-joined') {
+            console.log('[WebRTC] PEER_JOINED:', payload.senderName || payload.senderId);
             setPeerLeft(false);
             const peerName = payload.senderName || 'Participant';
             setSignalingStatus(`Peer (${peerName}) joined room. Exchanging handshake...`);
@@ -497,10 +514,11 @@ export const VideoRoom: React.FC<VideoRoomProps> = ({ appointment }) => {
             // If we are the doctor, or have local tracks ready, initiate or re-send offer
             if (isDoctor || (pc && pc.getSenders().length > 0)) {
               setTimeout(() => {
-                triggerOffer();
+                triggerOffer?.();
               }, 200);
             }
           } else if (payload.type === 'peer-presence') {
+            console.log('[WebRTC] PEER_JOINED (Presence Heartbeat):', payload.senderName || payload.senderId);
             setPeerLeft(false);
             const peerName = payload.senderName || 'Participant';
             console.log(`[WebRTC] Peer presence confirmed: ${peerName}`);
@@ -509,13 +527,22 @@ export const VideoRoom: React.FC<VideoRoomProps> = ({ appointment }) => {
             // Re-send cached candidates
             resendLocalCandidates();
 
-            // If we are the doctor, start offer upon receiving presence
+            // Doctor initiates offer upon presence
             if (isDoctor && pc) {
               setTimeout(() => {
-                triggerOffer();
+                triggerOffer?.();
               }, 200);
+            } else if (!isDoctor && pc && pc.signalingState === 'stable' && pc.getSenders().length > 0) {
+              // Polite fallback: if doctor hasn't offered within 1.5s, initiate offer safely
+              setTimeout(() => {
+                if (pc && pc.signalingState === 'stable' && !peerConnected) {
+                  console.log('[WebRTC] Polite peer safety timeout - triggering offer fallback');
+                  triggerOffer?.();
+                }
+              }, 1500);
             }
           } else if (payload.type === 'offer' && payload.data && pc) {
+            console.log('[WebRTC] OFFER_RECEIVED');
             console.log('[WebRTC] Offer received');
             setPeerLeft(false);
             
@@ -536,12 +563,15 @@ export const VideoRoom: React.FC<VideoRoomProps> = ({ appointment }) => {
 
             const answer = await pc.createAnswer();
             await pc.setLocalDescription(answer);
+            console.log('[WebRTC] ANSWER_CREATED');
             console.log('[WebRTC] Answer created');
+            console.log('[WebRTC] ANSWER_SENT');
             signaling.sendSignal('answer', pc.localDescription);
             
             // Re-send our candidates now that answer is ready
             resendLocalCandidates();
           } else if (payload.type === 'answer' && payload.data && pc) {
+            console.log('[WebRTC] ANSWER_RECEIVED');
             console.log('[WebRTC] Answer received');
             isSettingRemoteAnswerPending = true;
             await pc.setRemoteDescription(new RTCSessionDescription(payload.data));
@@ -551,6 +581,7 @@ export const VideoRoom: React.FC<VideoRoomProps> = ({ appointment }) => {
           } else if (payload.type === 'candidate' && payload.data && pc) {
             const candType = parseCandidateType(payload.data?.candidate);
             console.log('[WebRTC] ICE_CANDIDATE_TYPE:', candType);
+            console.log('[WebRTC] ICE_RECEIVED:', payload.data?.candidate || payload.data);
             console.log('[WebRTC] ICE candidate received:', payload.data?.candidate || payload.data);
             try {
               if (pc.remoteDescription && pc.remoteDescription.type) {
@@ -566,6 +597,7 @@ export const VideoRoom: React.FC<VideoRoomProps> = ({ appointment }) => {
           } else if (payload.type === 'peer-left') {
             console.log('[WebRTC] Peer left room:', payload.senderName || payload.senderId);
             setPeerConnected(false);
+            signalingRef.current?.setPeerConnected(false);
             setPeerLeft(true);
             setSignalingStatus('The other participant has left the consultation room.');
             if (remoteVideoRef.current) {
@@ -574,6 +606,7 @@ export const VideoRoom: React.FC<VideoRoomProps> = ({ appointment }) => {
           } else if (payload.type === 'end-consultation') {
             console.log('[WebRTC] Doctor ended consultation.');
             setPeerConnected(false);
+            signalingRef.current?.setPeerConnected(false);
             alert('The doctor has concluded this consultation session. Returning to dashboard.');
             navigate(role === 'doctor' ? '/doctor/dashboard' : '/student/dashboard');
           }
@@ -603,6 +636,13 @@ export const VideoRoom: React.FC<VideoRoomProps> = ({ appointment }) => {
         const hasVideoSender = senders.some(s => s.track && s.track.kind === 'video');
         const hasAudioSender = senders.some(s => s.track && s.track.kind === 'audio');
         console.log('[WebRTC] Local senders verified - Video sender:', hasVideoSender, 'Audio sender:', hasAudioSender);
+
+        // If Doctor and ready with tracks, initiate offer
+        if (isDoctor && triggerOffer) {
+          setTimeout(() => {
+            if (triggerOffer) triggerOffer();
+          }, 300);
+        }
 
         // Broadcast presence after media is attached so other peer knows we are ready with tracks
         signaling.sendSignal('peer-presence', {

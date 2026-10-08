@@ -4,10 +4,14 @@ import { createClient } from '@supabase/supabase-js';
 // Global cache for warm lambda executions
 declare global {
   var __campuscare_appointments: any[] | undefined;
+  var __campuscare_signals: Record<string, any[]> | undefined;
 }
 
 if (!globalThis.__campuscare_appointments) {
   globalThis.__campuscare_appointments = [];
+}
+if (!globalThis.__campuscare_signals) {
+  globalThis.__campuscare_signals = {};
 }
 
 export interface CallerIdentity {
@@ -573,6 +577,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({ success: true, appointment: target });
     }
 
+    // WebRTC Cross-Network Signaling Poll (Fallback & Redundancy)
+    if (action === 'signal_poll') {
+      const roomId = (req.query?.roomId || req.query?.room_id || '').toString().trim();
+      const callerId = caller.id;
+      const since = parseInt((req.query?.since || '0').toString(), 10);
+
+      if (!roomId) {
+        return res.status(400).json({ success: false, error: 'roomId required' });
+      }
+
+      const allSignals = globalThis.__campuscare_signals?.[roomId] || [];
+      const now = Date.now();
+      const pending = allSignals.filter(s => s.senderId !== callerId && s.createdAt > since && (now - s.createdAt) < 60000);
+
+      return res.status(200).json({
+        success: true,
+        signals: pending.map(s => s.payload),
+        serverTime: now
+      });
+    }
+
     // B. Backend Consultation Time & Authorization Access Verification Guard
     if (action === 'verify_consultation_access') {
       const targetId = (req.query?.id || req.query?.appointmentId || '').toString().trim();
@@ -766,6 +791,37 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // ==========================================
   if (req.method === 'POST') {
     const body = req.body || {};
+
+    // WebRTC Cross-Network Signaling Send
+    if (body.action === 'signal_send') {
+      const roomId = (body.roomId || body.room_id || '').toString().trim();
+      const payload = body.payload;
+      if (!roomId || !payload) {
+        return res.status(400).json({ success: false, error: 'roomId and payload required' });
+      }
+
+      if (!globalThis.__campuscare_signals) {
+        globalThis.__campuscare_signals = {};
+      }
+      if (!globalThis.__campuscare_signals[roomId]) {
+        globalThis.__campuscare_signals[roomId] = [];
+      }
+
+      const now = Date.now();
+      globalThis.__campuscare_signals[roomId].push({
+        senderId: caller.id,
+        payload,
+        createdAt: now
+      });
+
+      // Keep recent signals
+      globalThis.__campuscare_signals[roomId] = globalThis.__campuscare_signals[roomId]
+        .filter(s => (now - s.createdAt) < 120000)
+        .slice(-50);
+
+      return res.status(200).json({ success: true, serverTime: now });
+    }
+
     if (!body.appointmentDate || !body.timeSlot) {
       return res.status(400).json({
         success: false,
