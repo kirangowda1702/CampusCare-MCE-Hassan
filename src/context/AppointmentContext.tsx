@@ -122,7 +122,13 @@ export const AppointmentProvider: React.FC<{ children: React.ReactNode }> = ({ c
   }, [appointments]);
 
   const getAppointmentById = (id: string) => {
-    return appointments.find(a => a.id === id || a.bookingId === id);
+    if (!id) return undefined;
+    const clean = id.trim();
+    // 1. Authoritative ID lookup first
+    const byId = appointments.find(a => a.id === clean);
+    if (byId) return byId;
+    // 2. Booking ID lookup
+    return appointments.find(a => a.bookingId === clean || (a as any).booking_id === clean);
   };
 
   const createAppointment = async (data: {

@@ -250,34 +250,75 @@ export function normalizeAppointment(d: any): Appointment {
   const rawDate = (d.appointment_date || d.appointmentDate || d.date || getTodayIST()).toString();
   const appointmentDate = rawDate.slice(0, 10);
 
-  return {
-    id: d.id || d.appointment_id || ('apt-' + Date.now()),
-    bookingId: d.bookingId || d.booking_id || d.id || 'MCE-APT-2026-0000',
-    patientId: d.patientId || d.patient_id || d.student_id || d.user_id || 'usr-student-1',
-    patientName: d.patientName || d.patient_name || d.student_name || 'Rahul Sharma',
-    patientRole: d.patientRole || d.patient_role || 'student',
-    patientEmail: d.patientEmail || d.patient_email || 'student@mcehassan.ac.in',
-    patientPhone: d.patientPhone || d.patient_phone || '+91 98765 43210',
-    patientUSNorEmpId: d.patientUSNorEmpId || d.patient_usn_or_emp_id || d.usn || d.employee_id,
+  const id = d.id || d.appointment_id || ('apt-' + Date.now());
+  const bookingId = d.bookingId || d.booking_id || d.id || 'MCE-APT-2026-0000';
+  const patientId = d.patientId || d.patient_id || d.student_id || d.user_id || 'usr-student-1';
+  const patientName = d.patientName || d.patient_name || d.student_name || 'Rahul Sharma';
+  const patientRole = d.patientRole || d.patient_role || 'student';
+  const patientEmail = d.patientEmail || d.patient_email || 'student@mcehassan.ac.in';
+  const patientPhone = d.patientPhone || d.patient_phone || '+91 98765 43210';
+  const patientUSNorEmpId = d.patientUSNorEmpId || d.patient_usn_or_emp_id || d.usn || d.employee_id;
+  const serviceId = d.serviceId || d.service_id || 'srv-1';
+  const serviceName = d.serviceName || d.service_name || 'General Consultation';
+  const timeSlot = d.timeSlot || d.time_slot || d.time || '10:00 AM';
+  const startTime = d.startTime || d.start_time;
+  const endTime = d.endTime || d.end_time;
+  const consultationType = (d.consultationType || d.consultation_type || 'video').toString().toLowerCase() as any;
+  const reason = d.reason || 'General Consultation';
+  const symptoms = Array.isArray(d.symptoms) ? d.symptoms : (typeof d.symptoms === 'string' ? JSON.parse(d.symptoms || '[]') : []);
+  const notes = d.notes;
+  const createdAt = d.createdAt || d.created_at || new Date().toISOString();
+  const updatedAt = d.updatedAt || d.updated_at || new Date().toISOString();
+
+  const normalized: any = {
+    id,
+    bookingId,
+    booking_id: bookingId,
+    patientId,
+    patient_id: patientId,
+    patientName,
+    patient_name: patientName,
+    patientRole,
+    patient_role: patientRole,
+    patientEmail,
+    patient_email: patientEmail,
+    patientPhone,
+    patient_phone: patientPhone,
+    patientUSNorEmpId,
+    patient_usn_or_emp_id: patientUSNorEmpId,
     doctorId,
+    doctor_id: doctorId,
     doctorName,
+    doctor_name: doctorName,
     doctorSpecialization,
+    doctor_specialization: doctorSpecialization,
     doctorAvatar: d.doctorAvatar || d.doctor_avatar || d.avatar_url,
-    serviceId: d.serviceId || d.service_id || 'srv-1',
-    serviceName: d.serviceName || d.service_name || 'General Consultation',
+    serviceId,
+    service_id: serviceId,
+    serviceName,
+    service_name: serviceName,
     appointmentDate,
-    timeSlot: d.timeSlot || d.time_slot || d.time || '10:00 AM',
-    startTime: d.startTime || d.start_time,
-    endTime: d.endTime || d.end_time,
-    consultationType: (d.consultationType || d.consultation_type || 'video').toString().toLowerCase() as any,
-    reason: d.reason || 'General Consultation',
-    symptoms: Array.isArray(d.symptoms) ? d.symptoms : (typeof d.symptoms === 'string' ? JSON.parse(d.symptoms || '[]') : []),
+    appointment_date: appointmentDate,
+    timeSlot,
+    time_slot: timeSlot,
+    startTime,
+    start_time: startTime,
+    endTime,
+    end_time: endTime,
+    consultationType,
+    consultation_type: consultationType,
+    reason,
+    symptoms,
     status,
-    notes: d.notes,
-    createdAt: d.createdAt || d.created_at || new Date().toISOString(),
-    updatedAt: d.updatedAt || d.updated_at || new Date().toISOString(),
+    notes,
+    createdAt,
+    created_at: createdAt,
+    updatedAt,
+    updated_at: updatedAt,
     isDemo: false
   };
+
+  return normalized as Appointment;
 }
 
 export const appointmentService = {
@@ -805,14 +846,97 @@ export const appointmentService = {
    * Authoritative backend/security-layer consultation access verification.
    * Validates participant role, appointment status, and server-side IST time check.
    */
-  async verifyConsultationAccess(
-    appointmentId: string,
-    userContext?: any
-  ): Promise<{ allowed: boolean; message: string; minutesUntil?: number; reason?: string; serverEpochMs?: number }> {
+  /**
+   * Authoritative lookup of a single appointment by either authoritative database UUID, client ID, or bookingId.
+   */
+  async getAppointmentById(idOrBookingId: string, userContext?: any): Promise<Appointment | undefined> {
+    if (!idOrBookingId) return undefined;
+    const cleanId = idOrBookingId.trim();
+
+    // 1. Check in-memory list first
+    const mem = inMemoryAppointments.find(
+      a => a.id === cleanId || a.bookingId === cleanId || (a as any).booking_id === cleanId
+    );
+    if (mem) return mem;
+
+    // 2. Query centralized API endpoint
     try {
       if (typeof window !== 'undefined' && typeof fetch !== 'undefined') {
         const headers = await getAuthHeaders(userContext);
-        const res = await fetch(`/api/appointments?action=verify_consultation_access&id=${encodeURIComponent(appointmentId)}`, {
+        const res = await fetch(`/api/appointments?action=get_single&id=${encodeURIComponent(cleanId)}`, {
+          method: 'GET',
+          headers,
+          signal: typeof AbortSignal !== 'undefined' && AbortSignal.timeout ? AbortSignal.timeout(4000) : undefined
+        });
+        if (res.ok) {
+          const json = await res.json();
+          if (json?.appointment) {
+            const norm = normalizeAppointment(json.appointment);
+            inMemoryAppointments = [
+              norm,
+              ...inMemoryAppointments.filter(a => a.id !== norm.id && a.bookingId !== norm.bookingId)
+            ];
+            return norm;
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[appointmentService] getAppointmentById API warning:', e);
+    }
+
+    // 3. Direct Supabase query if available
+    if (isSupabaseConfigured) {
+      try {
+        let query = supabase.from('appointments').select('*');
+        if (isValidUuid(cleanId)) {
+          const { data, error } = await query.eq('id', cleanId).maybeSingle();
+          if (!error && data) return normalizeAppointment(data);
+        } else {
+          const { data, error } = await query.eq('booking_id', cleanId).maybeSingle();
+          if (!error && data) return normalizeAppointment(data);
+        }
+      } catch (err) {
+        console.warn('[appointmentService] Direct Supabase fetch error:', err);
+      }
+    }
+
+    // 4. Try localStorage
+    const saved = getLocalItem(STORAGE_KEY);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          const found = parsed.find(
+            (a: any) => a.id === cleanId || a.bookingId === cleanId || a.booking_id === cleanId
+          );
+          if (found) return normalizeAppointment(found);
+        }
+      } catch {}
+    }
+
+    return undefined;
+  },
+
+  /**
+   * Authoritative backend/security-layer consultation access verification.
+   * Validates participant role, appointment status, and server-side IST time check.
+   */
+  async verifyConsultationAccess(
+    target: string | { id?: string; bookingId?: string },
+    userContext?: any
+  ): Promise<{ allowed: boolean; message: string; minutesUntil?: number; reason?: string; serverEpochMs?: number; scheduledTimeSlot?: string }> {
+    const targetId = typeof target === 'string' ? target : (target?.id || '');
+    const targetBookingId = typeof target === 'string' ? '' : (target?.bookingId || '');
+
+    try {
+      if (typeof window !== 'undefined' && typeof fetch !== 'undefined') {
+        const headers = await getAuthHeaders(userContext);
+        const params = new URLSearchParams();
+        params.set('action', 'verify_consultation_access');
+        if (targetId) params.set('id', targetId);
+        if (targetBookingId) params.set('bookingId', targetBookingId);
+
+        const res = await fetch(`/api/appointments?${params.toString()}`, {
           method: 'GET',
           headers,
           signal: typeof AbortSignal !== 'undefined' && AbortSignal.timeout ? AbortSignal.timeout(5000) : undefined
@@ -823,7 +947,8 @@ export const appointmentService = {
           message: data.message || (data.allowed ? 'Access granted' : 'Access restricted'),
           minutesUntil: data.minutesUntil,
           reason: data.reason,
-          serverEpochMs: data.serverEpochMs
+          serverEpochMs: data.serverEpochMs,
+          scheduledTimeSlot: data.scheduledTimeSlot
         };
       }
     } catch (e) {
@@ -831,9 +956,13 @@ export const appointmentService = {
     }
 
     // Fallback: local IST access check
-    const existing = inMemoryAppointments.find(a => a.id === appointmentId || a.bookingId === appointmentId);
+    const existing = inMemoryAppointments.find(
+      a =>
+        (targetId && (a.id === targetId || a.bookingId === targetId || (a as any).booking_id === targetId)) ||
+        (targetBookingId && (a.bookingId === targetBookingId || (a as any).booking_id === targetBookingId || a.id === targetBookingId))
+    );
     if (!existing) {
-      return { allowed: false, message: 'Appointment not found' };
+      return { allowed: false, message: 'Appointment not found', reason: 'NOT_FOUND' };
     }
     const localCheck = checkAppointmentAccessIST(existing);
     return {

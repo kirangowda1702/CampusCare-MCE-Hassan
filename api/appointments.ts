@@ -134,34 +134,170 @@ export function normalizeRow(d: any): any {
 
   const rawDate = (d.appointment_date || d.appointmentDate || d.date || new Date().toISOString().slice(0, 10)).toString();
   const appointmentDate = rawDate.slice(0, 10);
+  const id = d.id || d.appointment_id || ('apt-' + Date.now());
+  const bookingId = d.booking_id || d.bookingId || d.id || `MCE-APT-2026-${Math.floor(1000 + Math.random() * 9000)}`;
+  const patientId = d.patient_id || d.patientId || 'usr-student-1';
+  const patientName = d.patient_name || d.patientName || 'Rahul Sharma';
+  const patientRole = d.patient_role || d.patientRole || 'student';
+  const patientEmail = d.patient_email || d.patientEmail || 'student@mcehassan.ac.in';
+  const patientPhone = d.patient_phone || d.patientPhone || '+91 98765 43210';
+  const patientUSNorEmpId = d.patient_usn_or_emp_id || d.patientUSNorEmpId || '4MC21CS089';
+  const timeSlot = d.time_slot || d.timeSlot || d.time || '10:00 AM';
+  const startTime = d.start_time || d.startTime;
+  const endTime = d.end_time || d.endTime;
+  const consultationType = (d.consultation_type || d.consultationType || 'video').toString().toLowerCase();
+  const reason = d.reason || 'General Consultation';
+  const symptoms = Array.isArray(d.symptoms) ? d.symptoms : (typeof d.symptoms === 'string' ? JSON.parse(d.symptoms || '[]') : []);
+  const notes = d.notes;
+  const createdAt = d.created_at || d.createdAt || new Date().toISOString();
+  const updatedAt = d.updated_at || d.updatedAt || new Date().toISOString();
 
   return {
-    id: d.id || d.appointment_id || ('apt-' + Date.now()),
-    bookingId: d.booking_id || d.bookingId || d.id || `MCE-APT-2026-${Math.floor(1000 + Math.random() * 9000)}`,
-    patientId: d.patient_id || d.patientId || 'usr-student-1',
-    patientName: d.patient_name || d.patientName || 'Rahul Sharma',
-    patientRole: d.patient_role || d.patientRole || 'student',
-    patientEmail: d.patient_email || d.patientEmail || 'student@mcehassan.ac.in',
-    patientPhone: d.patient_phone || d.patientPhone || '+91 98765 43210',
-    patientUSNorEmpId: d.patient_usn_or_emp_id || d.patientUSNorEmpId || '4MC21CS089',
+    id,
+    bookingId,
+    booking_id: bookingId,
+    patientId,
+    patient_id: patientId,
+    patientName,
+    patient_name: patientName,
+    patientRole,
+    patient_role: patientRole,
+    patientEmail,
+    patient_email: patientEmail,
+    patientPhone,
+    patient_phone: patientPhone,
+    patientUSNorEmpId,
+    patient_usn_or_emp_id: patientUSNorEmpId,
     doctorId,
+    doctor_id: doctorId,
     doctorName,
+    doctor_name: doctorName,
     doctorSpecialization,
+    doctor_specialization: doctorSpecialization,
     doctorAvatar: d.doctor_avatar || d.doctorAvatar,
     serviceId: d.service_id || d.serviceId || 'srv-1',
     serviceName: d.service_name || d.serviceName || 'General Consultation',
+    service_name: d.service_name || d.serviceName || 'General Consultation',
     appointmentDate,
-    timeSlot: d.time_slot || d.timeSlot || d.time || '10:00 AM',
-    startTime: d.start_time || d.startTime,
-    endTime: d.end_time || d.endTime,
-    consultationType: (d.consultation_type || d.consultationType || 'video').toString().toLowerCase(),
-    reason: d.reason || 'General Consultation',
-    symptoms: Array.isArray(d.symptoms) ? d.symptoms : (typeof d.symptoms === 'string' ? JSON.parse(d.symptoms || '[]') : []),
+    appointment_date: appointmentDate,
+    timeSlot,
+    time_slot: timeSlot,
+    startTime,
+    start_time: startTime,
+    endTime,
+    end_time: endTime,
+    consultationType,
+    consultation_type: consultationType,
+    reason,
+    symptoms,
     status,
-    notes: d.notes,
-    createdAt: d.created_at || d.createdAt || new Date().toISOString(),
-    updatedAt: d.updated_at || d.updatedAt || new Date().toISOString()
+    notes,
+    createdAt,
+    created_at: createdAt,
+    updatedAt,
+    updated_at: updatedAt
   };
+}
+
+/**
+ * Robust appointment resolution helper.
+ * Resolves by authoritative database UUID id, booking_id, or client ID safely without Postgres 22P02 UUID syntax errors.
+ */
+export async function findAppointment(
+  id?: string,
+  bookingId?: string,
+  supabaseClient?: any,
+  memoryStore: any[] = []
+): Promise<any | null> {
+  const cleanId = (id || '').trim();
+  const cleanBookingId = (bookingId || '').trim();
+
+  // 1. Check in-memory store by authoritative ID or booking ID
+  if (cleanId) {
+    const memMatch = memoryStore.find(a => 
+      a.id === cleanId || 
+      a.bookingId === cleanId || 
+      (a as any).booking_id === cleanId
+    );
+    if (memMatch) return normalizeRow(memMatch);
+  }
+  if (cleanBookingId) {
+    const memMatch = memoryStore.find(a => 
+      a.bookingId === cleanBookingId || 
+      (a as any).booking_id === cleanBookingId ||
+      a.id === cleanBookingId
+    );
+    if (memMatch) return normalizeRow(memMatch);
+  }
+
+  if (!supabaseClient) return null;
+
+  try {
+    // 2. Authoritative Database lookup:
+    // A) If cleanId is a valid UUID, search by id = cleanId
+    if (cleanId && isValidUuid(cleanId)) {
+      const { data, error } = await supabaseClient
+        .from('appointments')
+        .select('*')
+        .eq('id', cleanId)
+        .maybeSingle();
+      if (!error && data) return normalizeRow(data);
+    }
+
+    // B) Search by booking_id using cleanBookingId or cleanId
+    const bIdToSearch = cleanBookingId || cleanId;
+    if (bIdToSearch) {
+      const { data, error } = await supabaseClient
+        .from('appointments')
+        .select('*')
+        .eq('booking_id', bIdToSearch)
+        .maybeSingle();
+      if (!error && data) return normalizeRow(data);
+    }
+
+    // C) If cleanBookingId is a valid UUID, search by id = cleanBookingId
+    if (cleanBookingId && isValidUuid(cleanBookingId)) {
+      const { data, error } = await supabaseClient
+        .from('appointments')
+        .select('*')
+        .eq('id', cleanBookingId)
+        .maybeSingle();
+      if (!error && data) return normalizeRow(data);
+    }
+
+    // D) Search by ILIKE on booking_id if cleanId looks like a booking ID
+    if (cleanId && cleanId.toUpperCase().startsWith('MCE-APT')) {
+      const { data, error } = await supabaseClient
+        .from('appointments')
+        .select('*')
+        .ilike('booking_id', cleanId)
+        .maybeSingle();
+      if (!error && data) return normalizeRow(data);
+    }
+
+    // E) Fallback: Search the most recent appointments in case of client ID mismatch
+    const { data: recents } = await supabaseClient
+      .from('appointments')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(100);
+
+    if (Array.isArray(recents)) {
+      for (const row of recents) {
+        const norm = normalizeRow(row);
+        if (
+          (cleanId && (norm.id === cleanId || norm.bookingId === cleanId)) ||
+          (cleanBookingId && (norm.bookingId === cleanBookingId || norm.id === cleanBookingId))
+        ) {
+          return norm;
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[api/appointments] findAppointment database query warning:', err);
+  }
+
+  return null;
 }
 
 /**
@@ -412,10 +548,37 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === 'GET') {
     const action = req.query?.action as string | undefined;
 
-    // A. Backend Consultation Time & Authorization Access Verification Guard
+    // A. Single Appointment Retrieval (Authoritative Database Resolution)
+    if (action === 'get_single') {
+      const targetId = (req.query?.id || req.query?.appointmentId || '').toString().trim();
+      const targetBookingId = (req.query?.bookingId || req.query?.booking_id || '').toString().trim();
+      if (!targetId && !targetBookingId) {
+        return res.status(400).json({ success: false, error: 'Appointment ID or booking ID required.' });
+      }
+
+      const target = await findAppointment(targetId, targetBookingId, supabase, memoryStore);
+      if (!target) {
+        return res.status(404).json({ success: false, error: 'Appointment not found.' });
+      }
+
+      // RLS Check: Patient can access own, Doctor can access assigned, Admin can access all
+      const isPatient = isAppointmentForPatient(target, caller);
+      const isDoctor = isAppointmentForDoctor(target, caller);
+      const isAdmin = caller.role === 'admin';
+
+      if (!isPatient && !isDoctor && !isAdmin) {
+        return res.status(403).json({ success: false, error: 'Forbidden: Access to this appointment is unauthorized.' });
+      }
+
+      return res.status(200).json({ success: true, appointment: target });
+    }
+
+    // B. Backend Consultation Time & Authorization Access Verification Guard
     if (action === 'verify_consultation_access') {
       const targetId = (req.query?.id || req.query?.appointmentId || '').toString().trim();
-      if (!targetId) {
+      const targetBookingId = (req.query?.bookingId || req.query?.booking_id || '').toString().trim();
+
+      if (!targetId && !targetBookingId) {
         return res.status(400).json({
           success: false,
           allowed: false,
@@ -424,29 +587,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         });
       }
 
-      // 1. Locate appointment
-      let target = memoryStore.find(a => a.id === targetId || a.bookingId === targetId);
-      if (!target && supabase) {
-        try {
-          const { data } = await supabase
-            .from('appointments')
-            .select('*')
-            .or(`id.eq.${targetId},booking_id.eq.${targetId}`)
-            .maybeSingle();
-          if (data) {
-            target = normalizeRow(data);
-          }
-        } catch (err) {
-          console.warn('[api/appointments] Error verifying appointment for consultation:', err);
-        }
-      }
+      console.log('[api/appointments] verify_consultation_access request:', {
+        targetId,
+        targetBookingId,
+        callerId: caller.id,
+        callerRole: caller.role,
+        callerDoctorId: caller.doctorId,
+        callerEmail: caller.email
+      });
+
+      // 1. Locate appointment authoritatively via findAppointment
+      const target = await findAppointment(targetId, targetBookingId, supabase, memoryStore);
+
+      console.log('[api/appointments] Located appointment:', target ? {
+        id: target.id,
+        bookingId: target.bookingId,
+        doctorId: target.doctorId,
+        patientId: target.patientId,
+        status: target.status,
+        appointmentDate: target.appointmentDate,
+        timeSlot: target.timeSlot
+      } : 'NOT FOUND');
 
       if (!target) {
         return res.status(404).json({
           success: false,
           allowed: false,
           reason: 'NOT_FOUND',
-          message: 'Appointment not found.'
+          message: 'Appointment not found in system records.'
         });
       }
 
@@ -455,6 +623,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const isPatient = isAppointmentForPatient(target, caller);
       const isDoctor = isAppointmentForDoctor(target, caller);
       const isAdmin = caller.role === 'admin';
+
+      console.log('[api/appointments] Participant authorization:', { isPatient, isDoctor, isAdmin });
 
       if (!isPatient && !isDoctor && !isAdmin) {
         return res.status(403).json({
@@ -768,22 +938,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
-    // 1. Locate existing appointment in memory store or database
-    let target = memoryStore.find(a => a.id === targetId || a.bookingId === targetId);
-    if (!target && supabase) {
-      try {
-        const { data } = await supabase
-          .from('appointments')
-          .select('*')
-          .or(`id.eq.${id || targetId},booking_id.eq.${bookingId || targetId}`)
-          .maybeSingle();
-        if (data) {
-          target = normalizeRow(data);
-        }
-      } catch (err) {
-        console.warn('[api/appointments] Error querying appointment for update:', err);
-      }
-    }
+    // 1. Locate existing appointment authoritatively
+    let target = await findAppointment(id, bookingId, supabase, memoryStore);
 
     if (!target) {
       return res.status(404).json({
@@ -826,10 +982,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         };
         if (notes !== undefined) updateData.notes = notes;
 
-        await supabase
-          .from('appointments')
-          .update(updateData)
-          .or(`id.eq.${id || targetId},booking_id.eq.${bookingId || targetId}`);
+        if (isValidUuid(target.id)) {
+          await supabase.from('appointments').update(updateData).eq('id', target.id);
+        } else if (target.bookingId) {
+          await supabase.from('appointments').update(updateData).eq('booking_id', target.bookingId);
+        }
 
         // Trigger in-app notification to Student
         try {
@@ -872,7 +1029,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // 4. Update memory store
     globalThis.__campuscare_appointments = memoryStore.map(a => {
-      if (a.id === targetId || a.bookingId === targetId) {
+      if (a.id === target.id || a.bookingId === target.bookingId || a.id === targetId || a.bookingId === targetId) {
         return {
           ...a,
           status: status.toLowerCase(),
@@ -894,21 +1051,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // ==========================================
   if (req.method === 'DELETE') {
     const targetId = (req.query?.id || req.body?.id || req.body?.bookingId) as string;
-    if (!targetId) {
+    const targetBookingId = (req.query?.bookingId || req.body?.bookingId) as string;
+    if (!targetId && !targetBookingId) {
       return res.status(400).json({ success: false, error: 'Appointment ID required.' });
     }
 
-    let target = memoryStore.find(a => a.id === targetId || a.bookingId === targetId);
-    if (!target && supabase) {
-      try {
-        const { data } = await supabase
-          .from('appointments')
-          .select('*')
-          .or(`id.eq.${targetId},booking_id.eq.${targetId}`)
-          .maybeSingle();
-        if (data) target = normalizeRow(data);
-      } catch {}
-    }
+    let target = await findAppointment(targetId, targetBookingId, supabase, memoryStore);
 
     if (!target) {
       return res.status(404).json({ success: false, error: 'Appointment not found.' });
@@ -920,11 +1068,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (supabase) {
       try {
-        await supabase.from('appointments').delete().or(`id.eq.${targetId},booking_id.eq.${targetId}`);
+        if (isValidUuid(target.id)) {
+          await supabase.from('appointments').delete().eq('id', target.id);
+        } else if (target.bookingId) {
+          await supabase.from('appointments').delete().eq('booking_id', target.bookingId);
+        }
       } catch {}
     }
 
-    globalThis.__campuscare_appointments = memoryStore.filter(a => a.id !== targetId && a.bookingId !== targetId);
+    globalThis.__campuscare_appointments = memoryStore.filter(a => a.id !== target.id && a.bookingId !== target.bookingId && a.id !== targetId && a.bookingId !== targetId);
 
     return res.status(200).json({ success: true, message: `Appointment ${targetId} deleted.` });
   }

@@ -144,7 +144,7 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({
               onClick={() => onStartConsultation(appointment.id)}
               className="px-3.5 py-1.5 rounded-xl bg-primary-600 text-white text-xs font-semibold hover:bg-primary-700 transition-colors shadow flex items-center gap-1.5 animate-pulse-subtle"
             >
-              <Video className="w-3.5 h-3.5" /> Start Video Consult
+              <Video className="w-3.5 h-3.5" /> Start Video Consultation
             </button>
           )}
 
@@ -153,7 +153,7 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({
               to={`/consultation/${appointment.id}`}
               className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-primary-600 hover:bg-primary-700 text-white text-xs font-semibold shadow transition-all animate-pulse-subtle"
             >
-              <Video className="w-3.5 h-3.5" /> Join Video Consultation
+              <Video className="w-3.5 h-3.5" /> Start Video Consultation
             </Link>
           )}
 
