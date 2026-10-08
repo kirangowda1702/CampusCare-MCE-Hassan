@@ -228,19 +228,47 @@ export const VideoRoom: React.FC<VideoRoomProps> = ({ appointment }) => {
     }
   }, [hasRealStream, isCamOn, isScreenSharing]);
 
+  // Play remote video with autoplay policy detection and safe diagnostics
+  const playRemoteVideo = async (videoEl: HTMLVideoElement) => {
+    try {
+      console.log('[WebRTC] REMOTE_VIDEO_PLAY_ATTEMPT');
+      await videoEl.play();
+      console.log('[WebRTC] REMOTE_VIDEO_PLAY_SUCCESS');
+      setAutoplayBlocked(false);
+    } catch (err: any) {
+      if (err.name === 'NotAllowedError' || err.name === 'AbortError') {
+        console.warn('[WebRTC] REMOTE_VIDEO_PLAY_BLOCKED: Browser autoplay policy requires user interaction', err);
+        setAutoplayBlocked(true);
+      } else {
+        console.error('[WebRTC] REMOTE_VIDEO_ERROR: Error playing remote video stream:', err);
+      }
+    }
+  };
+
+  // Direct user-initiated click handler for the tap-to-play button
+  const handleEnableRemoteVideoClick = () => {
+    const videoEl = remoteVideoRef.current;
+    if (!videoEl) return;
+    console.log('[WebRTC] User clicked Enable Remote Video button');
+    if (remoteStreamRef.current && videoEl.srcObject !== remoteStreamRef.current) {
+      videoEl.srcObject = remoteStreamRef.current;
+    }
+    videoEl.playsInline = true;
+    playRemoteVideo(videoEl);
+  };
+
   // Synchronize remote video element srcObject whenever peer connects or remote stream arrives
   useEffect(() => {
     const videoEl = remoteVideoRef.current;
-    if (!videoEl) return;
+    if (!videoEl || !remoteStreamRef.current) return;
 
-    if (remoteStreamRef.current && peerConnected) {
+    if (peerConnected) {
       if (videoEl.srcObject !== remoteStreamRef.current) {
+        console.log('[WebRTC] REMOTE_STREAM_RECEIVED: Attaching remote stream to video element via sync effect');
         videoEl.srcObject = remoteStreamRef.current;
       }
       videoEl.playsInline = true;
-      videoEl.play().catch(err => {
-        console.warn('[WebRTC] Remote video play error:', err);
-      });
+      playRemoteVideo(videoEl);
     }
   }, [peerConnected]);
 
@@ -417,21 +445,19 @@ export const VideoRoom: React.FC<VideoRoomProps> = ({ appointment }) => {
       };
 
       // Remote Track Handler
-      pc.ontrack = event => {
+      pc.ontrack = async event => {
         console.log('[WebRTC] Remote track received:', event.track.kind);
         const remoteStream = event.streams?.[0] || new MediaStream([event.track]);
         remoteStreamRef.current = remoteStream;
-        if (remoteVideoRef.current) {
-          remoteVideoRef.current.srcObject = remoteStream;
-          remoteVideoRef.current.playsInline = true;
-          remoteVideoRef.current.autoplay = true;
-          remoteVideoRef.current.play().then(() => {
-            setAutoplayBlocked(false);
-          }).catch(e => {
-            console.warn('[WebRTC] Remote video play error (autoplay blocked?):', e);
-            setAutoplayBlocked(true);
-          });
+        console.log('[WebRTC] REMOTE_STREAM_RECEIVED: Received remote track and assembled MediaStream');
+
+        const videoEl = remoteVideoRef.current;
+        if (videoEl) {
+          videoEl.srcObject = remoteStream;
+          videoEl.playsInline = true;
+          await playRemoteVideo(videoEl);
         }
+
         setPeerConnected(true);
         signalingRef.current?.setPeerConnected(true);
         setPeerLeft(false);
@@ -929,14 +955,8 @@ export const VideoRoom: React.FC<VideoRoomProps> = ({ appointment }) => {
               {autoplayBlocked && (
                 <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/80 backdrop-blur-sm p-4">
                   <button
-                    onClick={() => {
-                      if (remoteVideoRef.current) {
-                        remoteVideoRef.current.play()
-                          .then(() => setAutoplayBlocked(false))
-                          .catch(e => console.warn('[WebRTC] User-initiated play failed:', e));
-                      }
-                    }}
-                    className="px-5 py-3 rounded-xl bg-primary-600 hover:bg-primary-500 text-white font-bold text-sm shadow-xl flex items-center gap-2 animate-bounce cursor-pointer"
+                    onClick={handleEnableRemoteVideoClick}
+                    className="px-5 py-3 rounded-xl bg-primary-600 hover:bg-primary-500 text-white font-bold text-sm shadow-xl flex items-center gap-2 animate-bounce cursor-pointer active:scale-95 transition-transform"
                   >
                     <Video className="w-5 h-5" /> Enable Remote Video (Tap to Play)
                   </button>
