@@ -59,12 +59,14 @@ export interface SignalPayload {
 }
 
 export type SignalingCallback = (payload: SignalPayload) => void;
+export type SignalingStatusCallback = (status: string, err?: any) => void;
 
 export class RealtimeSignalingChannel {
   private channelName: string;
   private channel: any = null;
   private broadcastChannel: BroadcastChannel | null = null;
   private onMessageCallback: SignalingCallback | null = null;
+  private onStatusCallback: SignalingStatusCallback | null = null;
   private currentUserId: string;
   private currentUserRole?: string;
   private currentUserName?: string;
@@ -72,9 +74,10 @@ export class RealtimeSignalingChannel {
   private outboxQueue: SignalPayload[] = [];
   private seenMessageIds: Set<string> = new Set();
 
-  constructor(appointmentId: string, currentUserId: string, currentUserRole?: string, currentUserName?: string) {
-    // Canonical room channel name based on appointment identifier
-    this.channelName = `teleconsultation:${appointmentId}`;
+  constructor(roomId: string, currentUserId: string, currentUserRole?: string, currentUserName?: string) {
+    // Canonical room channel name: consultation:{roomId}
+    const cleanRoomId = (roomId || 'default-room').trim();
+    this.channelName = `consultation:${cleanRoomId}`;
     this.currentUserId = currentUserId;
     this.currentUserRole = currentUserRole;
     this.currentUserName = currentUserName;
@@ -92,6 +95,14 @@ export class RealtimeSignalingChannel {
         console.warn('[WebRTC Signaling] BroadcastChannel unavailable:', err);
       }
     }
+  }
+
+  public isReady(): boolean {
+    return this.isSubscribed || (!isSupabaseConfigured && Boolean(this.broadcastChannel));
+  }
+
+  public getChannelName(): string {
+    return this.channelName;
   }
 
   private handleIncomingPayload(payload: SignalPayload, source: string) {
@@ -113,8 +124,9 @@ export class RealtimeSignalingChannel {
     }
   }
 
-  public subscribe(callback: SignalingCallback) {
+  public subscribe(callback: SignalingCallback, onStatusChange?: SignalingStatusCallback) {
     this.onMessageCallback = callback;
+    this.onStatusCallback = onStatusChange || null;
 
     if (isSupabaseConfigured) {
       try {
@@ -130,6 +142,10 @@ export class RealtimeSignalingChannel {
           })
           .subscribe((status: string, err?: any) => {
             console.log(`[WebRTC] Supabase Realtime subscription status [${this.channelName}]:`, status, err || '');
+            if (this.onStatusCallback) {
+              this.onStatusCallback(status, err);
+            }
+
             if (status === 'SUBSCRIBED') {
               this.isSubscribed = true;
               
@@ -156,7 +172,10 @@ export class RealtimeSignalingChannel {
       }
     } else {
       console.log('[WebRTC] Supabase Realtime not configured. Operating via local WebRTC BroadcastChannel.');
-      // Immediate presence on local broadcast channel
+      this.isSubscribed = true;
+      if (this.onStatusCallback) {
+        this.onStatusCallback('SUBSCRIBED');
+      }
       setTimeout(() => {
         this.sendSignal('peer-joined', {
           userId: this.currentUserId,
