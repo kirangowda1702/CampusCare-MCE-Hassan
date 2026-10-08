@@ -51,6 +51,7 @@ export const VideoRoom: React.FC<VideoRoomProps> = ({ appointment }) => {
   const [hasRealStream, setHasRealStream] = useState(false);
   const [mediaError, setMediaError] = useState<string | null>(null);
   const [peerConnected, setPeerConnected] = useState(false);
+  const [remotePeerPresent, setRemotePeerPresent] = useState(false);
   const [peerLeft, setPeerLeft] = useState(false);
   const [autoplayBlocked, setAutoplayBlocked] = useState(false);
   const [signalingStatus, setSignalingStatus] = useState<string>('Initializing WebRTC Room...');
@@ -523,11 +524,13 @@ export const VideoRoom: React.FC<VideoRoomProps> = ({ appointment }) => {
           if (payload.type === 'peer-joined') {
             console.log('[WebRTC] PEER_JOINED:', payload.senderName || payload.senderId);
             setPeerLeft(false);
+            setRemotePeerPresent(true);
             const peerName = payload.senderName || 'Participant';
             setSignalingStatus(`Peer (${peerName}) joined room. Exchanging handshake...`);
             console.log(`[WebRTC] Peer joined: ${peerName} (${payload.senderRole || 'peer'}). Replying with presence...`);
             
             // Acknowledge presence back to the newly joined peer
+            console.log('[WebRTC] PEER_PRESENCE_SENT');
             signaling.sendSignal('peer-presence', {
               userId: currentUserId,
               role: currentUserRole,
@@ -544,8 +547,10 @@ export const VideoRoom: React.FC<VideoRoomProps> = ({ appointment }) => {
               }, 200);
             }
           } else if (payload.type === 'peer-presence') {
+            console.log('[WebRTC] PEER_PRESENCE_RECEIVED');
             console.log('[WebRTC] PEER_JOINED (Presence Heartbeat):', payload.senderName || payload.senderId);
             setPeerLeft(false);
+            setRemotePeerPresent(true);
             const peerName = payload.senderName || 'Participant';
             console.log(`[WebRTC] Peer presence confirmed: ${peerName}`);
             setSignalingStatus(`Peer (${peerName}) in room. Starting peer handshake...`);
@@ -623,6 +628,7 @@ export const VideoRoom: React.FC<VideoRoomProps> = ({ appointment }) => {
           } else if (payload.type === 'peer-left') {
             console.log('[WebRTC] Peer left room:', payload.senderName || payload.senderId);
             setPeerConnected(false);
+            setRemotePeerPresent(false);
             signalingRef.current?.setPeerConnected(false);
             setPeerLeft(true);
             setSignalingStatus('The other participant has left the consultation room.');
@@ -978,19 +984,25 @@ export const VideoRoom: React.FC<VideoRoomProps> = ({ appointment }) => {
                     <h4 className="font-bold text-base text-white">
                       {peerLeft 
                         ? 'Participant Left Room' 
-                        : isDoctor 
-                          ? `Waiting for ${appointment.patientName} to join` 
-                          : `Waiting for ${doctorDisplayName} to join`}
+                        : remotePeerPresent
+                          ? isDoctor
+                            ? `${appointment.patientName} is in the room`
+                            : `${doctorDisplayName} is in the room`
+                          : isDoctor 
+                            ? `Waiting for ${appointment.patientName} to join` 
+                            : `Waiting for ${doctorDisplayName} to join`}
                     </h4>
                     <p className="text-xs text-slate-400 mt-1">
                       {peerLeft
                         ? 'The other party disconnected. You may wait for them to reconnect or exit the room.'
-                        : `Realtime signaling active on room ${appointment.bookingId || appointment.id}. Remote video will stream as soon as the other participant connects.`}
+                        : remotePeerPresent
+                          ? 'Both participants have entered the consultation room. Establishing encrypted WebRTC media peer connection...'
+                          : `Realtime signaling active on room ${appointment.bookingId || appointment.id}. Remote video will stream as soon as the other participant connects.`}
                     </p>
                   </div>
                   <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-slate-800 text-xs text-slate-300 font-mono">
                     <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
-                    Waiting for peer WebRTC handshake...
+                    {remotePeerPresent ? 'Negotiating WebRTC stream...' : 'Waiting for peer WebRTC handshake...'}
                   </div>
                 </div>
               )}

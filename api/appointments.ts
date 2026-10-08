@@ -579,17 +579,43 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // WebRTC Cross-Network Signaling Poll (Fallback & Redundancy)
     if (action === 'signal_poll') {
-      const roomId = (req.query?.roomId || req.query?.room_id || '').toString().trim();
+      const rawRoomId = (req.query?.roomId || req.query?.room_id || '').toString().trim();
       const callerId = caller.id;
       const since = parseInt((req.query?.since || '0').toString(), 10);
 
-      if (!roomId) {
+      if (!rawRoomId) {
         return res.status(400).json({ success: false, error: 'roomId required' });
       }
 
-      const allSignals = globalThis.__campuscare_signals?.[roomId] || [];
+      if (!globalThis.__campuscare_signals) {
+        globalThis.__campuscare_signals = {};
+      }
+
+      // Also check if rawRoomId is appointment ID vs booking ID to find alias
+      const appointmentTarget = await findAppointment(rawRoomId, rawRoomId, supabase, memoryStore);
+      const roomKeys = [rawRoomId];
+      if (appointmentTarget) {
+        if (appointmentTarget.bookingId && !roomKeys.includes(appointmentTarget.bookingId)) {
+          roomKeys.push(appointmentTarget.bookingId);
+        }
+        if (appointmentTarget.id && !roomKeys.includes(appointmentTarget.id)) {
+          roomKeys.push(appointmentTarget.id);
+        }
+      }
+
+      let allSignals: any[] = [];
+      for (const rk of roomKeys) {
+        const sigs = globalThis.__campuscare_signals[rk] || [];
+        allSignals = allSignals.concat(sigs);
+      }
+
       const now = Date.now();
-      const pending = allSignals.filter(s => s.senderId !== callerId && s.createdAt > since && (now - s.createdAt) < 60000);
+      const pending = allSignals.filter(s => {
+        const notMe = s.senderId !== callerId;
+        const isNew = s.createdAt > since;
+        const notExpired = (now - s.createdAt) < 120000;
+        return notMe && isNew && notExpired;
+      });
 
       return res.status(200).json({
         success: true,
@@ -794,30 +820,41 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // WebRTC Cross-Network Signaling Send
     if (body.action === 'signal_send') {
-      const roomId = (body.roomId || body.room_id || '').toString().trim();
+      const rawRoomId = (body.roomId || body.room_id || '').toString().trim();
       const payload = body.payload;
-      if (!roomId || !payload) {
+      if (!rawRoomId || !payload) {
         return res.status(400).json({ success: false, error: 'roomId and payload required' });
       }
 
       if (!globalThis.__campuscare_signals) {
         globalThis.__campuscare_signals = {};
       }
-      if (!globalThis.__campuscare_signals[roomId]) {
-        globalThis.__campuscare_signals[roomId] = [];
+
+      const appointmentTarget = await findAppointment(rawRoomId, rawRoomId, supabase, memoryStore);
+      const roomKeys = [rawRoomId];
+      if (appointmentTarget) {
+        if (appointmentTarget.bookingId && !roomKeys.includes(appointmentTarget.bookingId)) {
+          roomKeys.push(appointmentTarget.bookingId);
+        }
+        if (appointmentTarget.id && !roomKeys.includes(appointmentTarget.id)) {
+          roomKeys.push(appointmentTarget.id);
+        }
       }
 
       const now = Date.now();
-      globalThis.__campuscare_signals[roomId].push({
-        senderId: caller.id,
-        payload,
-        createdAt: now
-      });
-
-      // Keep recent signals
-      globalThis.__campuscare_signals[roomId] = globalThis.__campuscare_signals[roomId]
-        .filter(s => (now - s.createdAt) < 120000)
-        .slice(-50);
+      for (const rk of roomKeys) {
+        if (!globalThis.__campuscare_signals[rk]) {
+          globalThis.__campuscare_signals[rk] = [];
+        }
+        globalThis.__campuscare_signals[rk].push({
+          senderId: caller.id,
+          payload,
+          createdAt: now
+        });
+        globalThis.__campuscare_signals[rk] = globalThis.__campuscare_signals[rk]
+          .filter(s => (now - s.createdAt) < 120000)
+          .slice(-50);
+      }
 
       return res.status(200).json({ success: true, serverTime: now });
     }

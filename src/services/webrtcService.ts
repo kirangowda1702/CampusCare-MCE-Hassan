@@ -215,6 +215,9 @@ export class RealtimeSignalingChannel {
     }
 
     console.log(`[WebRTC Signaling via ${source}] Received signal:`, payload.type, 'from:', payload.senderName || payload.senderId);
+    if (payload.type === 'peer-presence') {
+      console.log('[WebRTC] PEER_PRESENCE_RECEIVED');
+    }
     if (this.onMessageCallback) {
       this.onMessageCallback(payload);
     }
@@ -228,6 +231,7 @@ export class RealtimeSignalingChannel {
       if (this.isSubscribed) return;
       this.isSubscribed = true;
       console.log('[WebRTC] CHANNEL_SUBSCRIBED:', this.channelName);
+      console.log('[WebRTC] PRESENCE_STARTED');
       if (this.onStatusCallback) {
         this.onStatusCallback('SUBSCRIBED');
       }
@@ -309,7 +313,12 @@ export class RealtimeSignalingChannel {
       }
 
       try {
-        const headers = await getAuthHeaders();
+        const userCtx = {
+          id: this.currentUserId,
+          role: this.currentUserRole,
+          fullName: this.currentUserName
+        };
+        const headers = await getAuthHeaders(userCtx);
         const res = await fetch(`/api/appointments?action=signal_poll&roomId=${encodeURIComponent(this.roomId)}&since=${this.lastPollTime}`, {
           method: 'GET',
           headers,
@@ -347,7 +356,12 @@ export class RealtimeSignalingChannel {
 
   private dispatchRelaySignal(payload: SignalPayload) {
     if (typeof window === 'undefined' || typeof fetch === 'undefined') return;
-    getAuthHeaders().then(headers => {
+    const userCtx = {
+      id: this.currentUserId,
+      role: this.currentUserRole,
+      fullName: this.currentUserName
+    };
+    getAuthHeaders(userCtx).then(headers => {
       fetch('/api/appointments', {
         method: 'POST',
         headers: {
@@ -382,6 +396,9 @@ export class RealtimeSignalingChannel {
     }
 
     console.log('[WebRTC Signaling] Sending signal:', type, 'sender:', this.currentUserName || this.currentUserId);
+    if (type === 'peer-presence') {
+      console.log('[WebRTC] PEER_PRESENCE_SENT');
+    }
 
     // 1. Send via local BroadcastChannel
     if (this.broadcastChannel) {
