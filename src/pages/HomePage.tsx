@@ -47,6 +47,7 @@ import { useAuth } from '../context/AuthContext';
 import { useAppointments } from '../context/AppointmentContext';
 import { useMedical } from '../context/MedicalContext';
 import { FloatingMedicalAssistant } from '../components/common/FloatingMedicalAssistant';
+import mceCampusPhoto from '../assets/images/mce-campus-twilight.jpg';
 
 export const HomePage: React.FC = () => {
   const navigate = useNavigate();
@@ -117,22 +118,48 @@ export const HomePage: React.FC = () => {
       {/* ==================================================
           2. PREMIUM DARK HERO + 3. HERO RIGHT AI PANEL
       ================================================== */}
-      <section className="relative w-full bg-[#060d17] text-white pt-8 sm:pt-14 pb-14 sm:pb-20 border-b border-slate-800 overflow-hidden">
-        {/* Subtle Medical Grid Pattern */}
-        <div
-          className="absolute inset-0 opacity-[0.03] pointer-events-none"
-          style={{
-            backgroundImage: `radial-gradient(circle, #38bdf8 1px, transparent 1px)`,
-            backgroundSize: '28px 28px'
-          }}
-        />
+      {/* ==================================================
+          2. MCE HASSAN HERO SECTION WITH REAL OFFICIAL CAMPUS PHOTO
+      ================================================== */}
+      <section className="relative w-full text-white pt-8 sm:pt-14 pb-14 sm:pb-20 border-b border-slate-800 overflow-hidden bg-[#07162c]">
+        {/* Real Official MCE Hassan Campus Background Photograph */}
+        <div className="absolute inset-0 z-0">
+          <img
+            src={mceCampusPhoto}
+            alt="Official campus photograph of Malnad College of Engineering (MCE), Hassan main administrative building"
+            className="w-full h-full object-cover object-center filter brightness-[0.34] contrast-[1.12] saturate-[1.15]"
+            loading="eager"
+            onError={(e) => {
+              // Graceful fallback to public folder asset or high-res official Wikimedia link if bundle fails
+              const target = e.currentTarget;
+              if (!target.src.includes('mce-campus-twilight.jpg')) {
+                target.src = '/images/mce-campus-twilight.jpg';
+              } else if (!target.src.includes('upload.wikimedia.org')) {
+                target.src = 'https://upload.wikimedia.org/wikipedia/commons/thumb/7/7e/Malnad_College_of_Engineering_Main_Block_at_Twilight.jpg/1920px-Malnad_College_of_Engineering_Main_Block_at_Twilight.jpg';
+              }
+            }}
+          />
 
-        {/* Soft Healthcare Blue Gradient Glow */}
-        <div className="absolute top-1/4 left-1/4 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-primary-600/15 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute bottom-10 right-10 w-[500px] h-[500px] bg-teal-500/10 rounded-full blur-3xl pointer-events-none" />
+          {/* MCE Royal Blue (#1e3a8a) + Deep Navy + Golden Yellow Accent Overlay Gradient for High Contrast & Text Legibility */}
+          <div className="absolute inset-0 bg-gradient-to-r from-[#030d22]/95 via-[#071d44]/88 to-[#040e22]/80" />
+          <div className="absolute inset-0 bg-gradient-to-t from-[#060d17] via-transparent to-[#040f24]/70" />
+
+          {/* Soft MCE Royal Blue & Golden Yellow Brand Glows */}
+          <div className="absolute top-1/4 left-1/4 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-blue-600/20 rounded-full blur-3xl pointer-events-none" />
+          <div className="absolute bottom-10 right-10 w-[500px] h-[500px] bg-amber-500/15 rounded-full blur-3xl pointer-events-none" />
+
+          {/* Subtle Institutional Grid */}
+          <div
+            className="absolute inset-0 opacity-[0.03] pointer-events-none"
+            style={{
+              backgroundImage: `radial-gradient(circle, #38bdf8 1px, transparent 1px)`,
+              backgroundSize: '28px 28px'
+            }}
+          />
+        </div>
 
         {/* Abstract Healthcare Waveform SVG Banner */}
-        <div className="absolute top-0 right-0 w-full lg:w-2/3 h-48 opacity-10 pointer-events-none">
+        <div className="absolute top-0 right-0 w-full lg:w-2/3 h-48 opacity-10 pointer-events-none z-0">
           <svg viewBox="0 0 1000 200" fill="none" className="w-full h-full stroke-cyan-400 stroke-2">
             <path d="M0,100 L200,100 L220,60 L240,140 L260,30 L280,170 L300,100 L500,100 L520,70 L540,130 L560,40 L580,160 L600,100 L1000,100" />
           </svg>
@@ -147,67 +174,100 @@ export const HomePage: React.FC = () => {
               transition={{ duration: 0.5 }}
               className="lg:col-span-7 space-y-6 text-center lg:text-left"
             >
-              {/* Badge */}
-              <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-blue-950/80 border border-blue-800/60 text-blue-300 text-xs font-bold shadow-inner">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                MCE CAMPUSCARE • DIGITAL HEALTHCARE
+              {/* Institutional Badge */}
+              <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#1e3a8a]/90 border border-amber-400/50 text-amber-300 text-xs font-bold shadow-lg shadow-blue-950/50 backdrop-blur-md">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
+                <span className="tracking-wide">MALNAD COLLEGE OF ENGINEERING • HASSAN</span>
               </div>
 
-              {/* Main Headline */}
-              <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-white leading-[1.12]">
-                Your Campus. <br />
-                Your Health. <br />
-                <span className="bg-gradient-to-r from-blue-400 via-teal-300 to-amber-300 bg-clip-text text-transparent">
-                  One Intelligent Platform.
-                </span>
-              </h1>
+              {/* CampusCare Branding & Hero Titles */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-center lg:justify-start gap-3">
+                  <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[#1e3a8a] to-blue-600 border-2 border-amber-400/60 flex items-center justify-center shadow-xl shadow-blue-950/60 flex-shrink-0">
+                    <HeartPulse className="w-7 h-7 text-amber-300" />
+                  </div>
+                  <div className="text-left">
+                    <span className="block text-2xl sm:text-3xl font-black tracking-tight text-white uppercase drop-shadow-sm">
+                      CampusCare
+                    </span>
+                    <span className="text-[11px] font-bold tracking-wider text-blue-200 uppercase">
+                      College Telemedicine System
+                    </span>
+                  </div>
+                </div>
+
+                {/* Main Headline */}
+                <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-white leading-[1.12] drop-shadow-md">
+                  College Telemedicine <br />
+                  <span className="bg-gradient-to-r from-blue-200 via-white to-amber-300 bg-clip-text text-transparent">
+                    System
+                  </span>
+                </h1>
+
+                {/* Tagline / Subtitle */}
+                <p className="text-xl sm:text-2xl font-bold text-amber-300 tracking-wide font-sans drop-shadow-sm">
+                  &ldquo;Your Health, Connected to Campus&rdquo;
+                </p>
+              </div>
 
               {/* Supporting Text */}
-              <p className="text-base sm:text-lg text-slate-300 max-w-2xl mx-auto lg:mx-0 leading-relaxed font-normal">
-                Connect with campus doctors, understand your symptoms with AI-assisted guidance, manage appointments and records, and access emergency support from one secure healthcare platform.
+              <p className="text-base sm:text-lg text-slate-200 max-w-2xl mx-auto lg:mx-0 leading-relaxed font-normal">
+                Connecting students, faculty, and staff of Malnad College of Engineering with verified campus doctors, AI-assisted symptom triage, digital prescriptions, and 24/7 First Aid emergency response.
               </p>
 
               {/* Action Buttons */}
               <div className="flex flex-wrap items-center justify-center lg:justify-start gap-3.5 pt-1">
+                {/* Primary CTA: Book Appointment */}
                 <Link
-                  to="/symptom-checker"
-                  className="px-6 py-3.5 rounded-2xl bg-gradient-to-r from-[#1e3a8a] to-primary-600 hover:from-blue-800 hover:to-primary-700 text-white font-bold text-sm shadow-lg shadow-blue-950/50 hover:scale-[1.02] transition-all flex items-center gap-2"
+                  to="/appointments/book"
+                  className="px-6 py-3.5 rounded-2xl bg-gradient-to-r from-[#1e3a8a] via-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-600 text-white font-extrabold text-sm shadow-xl shadow-blue-950/70 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center gap-2 border border-amber-400/50"
                 >
-                  <Sparkles className="w-4 h-4 text-amber-300" /> Start AI Health Guidance
+                  <Calendar className="w-4 h-4 text-amber-300" /> Book Appointment
                 </Link>
 
+                {/* Secondary CTA: Explore Healthcare Services */}
                 <Link
-                  to="/doctors"
-                  className="px-6 py-3.5 rounded-2xl bg-slate-800/90 hover:bg-slate-700/90 text-white border border-slate-700 font-bold text-sm shadow-sm transition-all flex items-center gap-2"
+                  to="/services"
+                  className="px-6 py-3.5 rounded-2xl bg-slate-900/85 hover:bg-slate-800/90 text-white border border-slate-700 hover:border-amber-400/60 font-bold text-sm shadow-md transition-all flex items-center gap-2 backdrop-blur-md"
                 >
-                  <Stethoscope className="w-4 h-4 text-teal-400" /> Find a Doctor
+                  <Stethoscope className="w-4 h-4 text-teal-300" /> Explore Healthcare Services
                 </Link>
 
+                {/* Emergency SOS Button */}
                 <button
                   onClick={() => setIsEmergencyModalOpen(true)}
-                  className="px-5 py-3.5 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-sm shadow-lg shadow-rose-900/30 transition-all flex items-center gap-2"
+                  className="px-5 py-3.5 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-sm shadow-lg shadow-rose-900/40 transition-all flex items-center gap-2"
                 >
                   <ShieldAlert className="w-4 h-4 animate-pulse" /> Emergency SOS
                 </button>
               </div>
 
-              {/* Trust Indicators */}
-              <div className="pt-2 flex flex-wrap items-center justify-center lg:justify-start gap-4 sm:gap-6 text-xs font-semibold text-slate-300">
-                <div className="flex items-center gap-1.5">
-                  <Sparkles className="w-4 h-4 text-amber-400" />
-                  <span>AI-Assisted</span>
+              {/* Campus Location & Trust Indicators */}
+              <div className="pt-2 flex flex-col items-center lg:items-start gap-3 text-xs">
+                <div className="flex items-center gap-2 text-slate-300 bg-slate-900/70 px-3.5 py-1.5 rounded-xl border border-slate-700/70 backdrop-blur-md shadow-sm">
+                  <MapPin className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
+                  <span className="font-medium text-slate-200">
+                    Real MCE Hassan Campus • Main Block & Health Center
+                  </span>
                 </div>
-                <div className="flex items-center gap-1.5">
-                  <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                  <span>Secure Records</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <Video className="w-4 h-4 text-teal-400" />
-                  <span>Video Consultation</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <ShieldAlert className="w-4 h-4 text-rose-400" />
-                  <span>Campus Emergency Support</span>
+
+                <div className="flex flex-wrap items-center justify-center lg:justify-start gap-4 sm:gap-6 font-semibold text-slate-300">
+                  <div className="flex items-center gap-1.5">
+                    <Sparkles className="w-4 h-4 text-amber-400" />
+                    <span>AI-Assisted</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                    <span>Secure Records</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <Video className="w-4 h-4 text-teal-400" />
+                    <span>Video Consultation</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <ShieldAlert className="w-4 h-4 text-rose-400" />
+                    <span>Campus Emergency Support</span>
+                  </div>
                 </div>
               </div>
             </motion.div>
@@ -219,11 +279,11 @@ export const HomePage: React.FC = () => {
               transition={{ duration: 0.5, delay: 0.1 }}
               className="lg:col-span-5"
             >
-              <div className="relative rounded-3xl bg-slate-900/95 border border-slate-800 p-6 sm:p-7 shadow-2xl shadow-black/80 space-y-5 backdrop-blur-xl">
+              <div className="relative rounded-3xl bg-slate-900/90 border border-slate-700/80 p-6 sm:p-7 shadow-2xl shadow-black/80 space-y-5 backdrop-blur-xl">
                 {/* Card Title & Pulse */}
                 <div className="flex items-center justify-between border-b border-slate-800 pb-4">
                   <div className="flex items-center gap-3">
-                    <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-[#1e3a8a] to-teal-500 text-white flex items-center justify-center shadow-md">
+                    <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-[#1e3a8a] to-teal-500 text-white flex items-center justify-center shadow-md border border-amber-400/30">
                       <Sparkles className="w-5 h-5 text-amber-300" />
                     </div>
                     <div>
@@ -236,8 +296,8 @@ export const HomePage: React.FC = () => {
                       </p>
                     </div>
                   </div>
-                  <span className="text-[10px] uppercase font-bold tracking-wider px-2.5 py-0.5 rounded-md bg-teal-950 text-teal-300 border border-teal-800/80">
-                    AI-Assisted Health Guidance
+                  <span className="text-[10px] uppercase font-bold tracking-wider px-2.5 py-0.5 rounded-md bg-[#1e3a8a]/70 text-amber-300 border border-amber-400/40">
+                    AI-Assisted Guidance
                   </span>
                 </div>
 
@@ -264,7 +324,7 @@ export const HomePage: React.FC = () => {
                         key={chip}
                         type="button"
                         onClick={() => handleQuickChipClick(chip)}
-                        className="px-2.5 py-1 rounded-xl bg-slate-800 hover:bg-slate-700 text-[11px] font-semibold text-slate-200 border border-slate-700 hover:border-teal-500 transition-colors"
+                        className="px-2.5 py-1 rounded-xl bg-slate-800 hover:bg-slate-700 text-[11px] font-semibold text-slate-200 border border-slate-700 hover:border-amber-400/60 transition-colors"
                       >
                         + {chip}
                       </button>
@@ -273,7 +333,7 @@ export const HomePage: React.FC = () => {
 
                   <button
                     type="submit"
-                    className="w-full py-3 rounded-2xl bg-gradient-to-r from-[#1e3a8a] to-teal-600 hover:from-blue-800 hover:to-teal-500 text-white font-bold text-xs shadow-md transition-all flex items-center justify-center gap-2"
+                    className="w-full py-3 rounded-2xl bg-gradient-to-r from-[#1e3a8a] via-blue-600 to-teal-600 hover:from-blue-800 hover:to-teal-500 text-white font-bold text-xs shadow-md transition-all flex items-center justify-center gap-2 border border-amber-400/30"
                   >
                     <Sparkles className="w-4 h-4 text-amber-300" /> Start AI Assessment
                   </button>
