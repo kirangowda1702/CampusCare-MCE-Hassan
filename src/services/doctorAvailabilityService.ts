@@ -250,14 +250,10 @@ export const doctorAvailabilityService = {
       return [];
     }
 
-    // 3. Query existing booked appointments for double booking check
-    const appointments = await appointmentService.getAppointments();
-    const bookedSlots = appointments.filter(
-      a =>
-        (a.doctorId === doctorId || a.doctorId === doctorRecord?.doctorId || a.doctorId === doctorRecord?.id) &&
-        a.appointmentDate === dateStr &&
-        a.status !== 'cancelled' &&
-        a.status !== 'rejected'
+    // 3. Query existing booked appointments for double booking check across all patients
+    const bookedSlots = await appointmentService.getBookedSlotsForDoctor(
+      doctorRecord?.doctorId || doctorRecord?.id || doctorId,
+      dateStr
     );
 
     const slots: GeneratedSlot[] = [];
@@ -302,7 +298,7 @@ export const doctorAvailabilityService = {
 
         // Double-booking check
         const isBooked = bookedSlots.some(
-          a => a.timeSlot === displayLabel || a.startTime === start24
+          a => (a.timeSlot && a.timeSlot.trim().toLowerCase() === displayLabel.toLowerCase()) || (a.startTime && a.startTime.trim() === start24)
         );
 
         // Past-slot check for today in IST

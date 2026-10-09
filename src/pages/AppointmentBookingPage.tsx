@@ -9,7 +9,8 @@ import {
   ChevronRight,
   ArrowLeft,
   ShieldCheck,
-  Info
+  Info,
+  AlertCircle
 } from 'lucide-react';
 import { mockServices } from '../data/services';
 import { mockDoctors } from '../data/doctors';
@@ -19,7 +20,17 @@ import { useAppointments } from '../context/AppointmentContext';
 import { useAuth } from '../context/AuthContext';
 import { ConsultationType, HealthService, Doctor, Appointment } from '../types';
 import { CalendarDatePicker } from '../components/calendar/CalendarDatePicker';
-import { getTodayIST, isDateInPast, formatDateFull, getDayOfWeek } from '../utils/dateUtils';
+import {
+  getTodayIST,
+  isDateInPast,
+  isDateToday,
+  isTimeSlotInPastToday,
+  formatDateFull,
+  getDayOfWeek,
+  convert24To12,
+  calculateSlotEndTime,
+  formatAppointmentScheduleDisplay
+} from '../utils/dateUtils';
 
 export const AppointmentBookingPage: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -40,6 +51,7 @@ export const AppointmentBookingPage: React.FC = () => {
   const [selectedSlot, setSelectedSlot] = useState<string>('');
   const [selectedStartTime, setSelectedStartTime] = useState<string>('10:00');
   const [selectedEndTime, setSelectedEndTime] = useState<string>('10:30');
+  const [timeValidation, setTimeValidation] = useState<{ isValid: boolean; message: string } | null>(null);
   const [generatedSlots, setGeneratedSlots] = useState<GeneratedSlot[]>([]);
   const [loadingSlots, setLoadingSlots] = useState<boolean>(false);
   const [bookingError, setBookingError] = useState<string | null>(null);
@@ -78,6 +90,43 @@ export const AppointmentBookingPage: React.FC = () => {
     }
   }, [preselectedDoctorId, preselectedServiceId]);
 
+  const validateSelectedTime = (dateStr: string, time24: string, slots: GeneratedSlot[]) => {
+    if (!time24) {
+      return { isValid: false, message: 'Please select a preferred consultation time.' };
+    }
+    if (isDateInPast(dateStr)) {
+      return { isValid: false, message: 'Selected date is in the past. Please choose a future date.' };
+    }
+    if (isDateToday(dateStr) && isTimeSlotInPastToday(time24)) {
+      return { isValid: false, message: 'Selected time has already passed for today. Please select a future time.' };
+    }
+    const slotLabel = convert24To12(time24);
+    const conflicting = slots.find(
+      s => (s.startTime === time24 || s.slot.toLowerCase() === slotLabel.toLowerCase()) && !s.isAvailable
+    );
+    if (conflicting) {
+      return { isValid: false, message: conflicting.bookedReason || 'This time slot is already reserved.' };
+    }
+    return { isValid: true, message: `Time selected: ${slotLabel}` };
+  };
+
+  const handleManualTimeChange = (time24: string) => {
+    setSelectedStartTime(time24);
+    const end24 = calculateSlotEndTime(time24, 30);
+    setSelectedEndTime(end24);
+    const label = convert24To12(time24);
+    setSelectedSlot(label);
+    const val = validateSelectedTime(selectedDate, time24, generatedSlots);
+    setTimeValidation(val);
+  };
+
+  const handleSlotSelection = (slotItem: GeneratedSlot) => {
+    setSelectedSlot(slotItem.slot);
+    setSelectedStartTime(slotItem.startTime);
+    setSelectedEndTime(slotItem.endTime);
+    setTimeValidation({ isValid: true, message: `Selected clinical slot: ${slotItem.slot}` });
+  };
+
   // Fetch dynamic available slots when doctor or date changes
   useEffect(() => {
     if (selectedDoctor && selectedDate) {
@@ -90,13 +139,22 @@ export const AppointmentBookingPage: React.FC = () => {
             setSelectedSlot(firstAvailable.slot);
             setSelectedStartTime(firstAvailable.startTime);
             setSelectedEndTime(firstAvailable.endTime);
+            setTimeValidation({ isValid: true, message: `Available slot: ${firstAvailable.slot}` });
           } else {
-            setSelectedSlot('');
+            // Keep existing manual time if valid, or clear
+            if (selectedStartTime) {
+              const val = validateSelectedTime(selectedDate, selectedStartTime, slots);
+              setTimeValidation(val);
+            } else {
+              setSelectedSlot('');
+              setTimeValidation({ isValid: false, message: 'No available slots for this date. Please select another date.' });
+            }
           }
         })
         .catch(() => {
           setGeneratedSlots([]);
           setSelectedSlot('');
+          setTimeValidation({ isValid: false, message: 'Could not load slots. You may enter a preferred time manually.' });
         })
         .finally(() => {
           setLoadingSlots(false);
@@ -115,13 +173,20 @@ export const AppointmentBookingPage: React.FC = () => {
     }
     if (step === 3) {
       if (!selectedDate || isDateInPast(selectedDate)) {
-        alert('Please select a valid future consultation date on the calendar');
+        alert('Please select a valid future consultation date');
         return;
       }
     }
-    if (step === 4 && !selectedSlot) {
-      alert('Please select an available time slot');
-      return;
+    if (step === 4) {
+      if (!selectedSlot || !selectedStartTime) {
+        alert('Please select or specify a preferred consultation time');
+        return;
+      }
+      const val = validateSelectedTime(selectedDate, selectedStartTime, generatedSlots);
+      if (!val.isValid) {
+        alert(val.message);
+        return;
+      }
     }
     if (step === 5 && !reason.trim()) {
       alert('Please enter a brief reason or symptoms for the consultation');
@@ -364,94 +429,171 @@ export const AppointmentBookingPage: React.FC = () => {
               </div>
             </div>
 
-            <div>
-              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-2">
-                Select Consultation Date (Full Calendar):
-              </label>
-              <CalendarDatePicker
-                selectedDate={selectedDate}
-                onSelectDate={d => {
-                  setSelectedDate(d);
-                  setSelectedSlot('');
-                }}
-                doctorName={selectedDoctor?.name}
-                doctorAvailableDays={selectedDoctor?.availableDays || selectedDoctor?.availability_days}
-              />
+            <div className="space-y-4">
+              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm">
+                <div>
+                  <label htmlFor="manual-date-picker" className="block text-xs font-bold text-slate-800 dark:text-slate-200">
+                    Consultation Date Picker (Manual Selection):
+                  </label>
+                  <p className="text-[11px] text-slate-500">
+                    Select your consultation date manually using the date picker or choose from the interactive calendar.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    id="manual-date-picker"
+                    type="date"
+                    min={getTodayIST()}
+                    value={selectedDate}
+                    onChange={e => {
+                      const val = e.target.value;
+                      if (val) {
+                        setSelectedDate(val);
+                        setSelectedSlot('');
+                      }
+                    }}
+                    className="px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-xs font-bold text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-primary-500 shadow-sm"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-2">
+                  Select Consultation Date (Interactive Monthly Calendar):
+                </label>
+                <CalendarDatePicker
+                  selectedDate={selectedDate}
+                  onSelectDate={d => {
+                    setSelectedDate(d);
+                    setSelectedSlot('');
+                  }}
+                  doctorName={selectedDoctor?.name}
+                  doctorAvailableDays={selectedDoctor?.availableDays || selectedDoctor?.availability_days}
+                />
+              </div>
             </div>
           </div>
         )}
 
         {step === 4 && (
-          <div className="space-y-4">
+          <div className="space-y-6">
             <div className="flex items-center justify-between">
-              <h3 className="text-base font-bold text-slate-900 dark:text-white">Step 4: Select Available Time Slot</h3>
+              <h3 className="text-base font-bold text-slate-900 dark:text-white">Step 4: Select Preferred Consultation Time</h3>
               <span className="text-xs text-primary-600 font-semibold">Real-Time Clinical Schedule</span>
             </div>
             <p className="text-xs text-slate-500">
-              Available consultation slots for <span className="font-semibold text-slate-700 dark:text-slate-300">{selectedDoctor?.name}</span> on <span className="font-semibold text-slate-700 dark:text-slate-300">{formatDateFull(selectedDate)}</span>:
+              Schedule consultation with <span className="font-semibold text-slate-700 dark:text-slate-300">{selectedDoctor?.name}</span> for <span className="font-semibold text-slate-700 dark:text-slate-300">{formatDateFull(selectedDate)}</span>:
             </p>
 
-            {loadingSlots ? (
-              <div className="p-8 rounded-2xl bg-slate-50 dark:bg-slate-800 text-center text-xs text-slate-500 flex items-center justify-center gap-2">
-                <Clock className="w-4 h-4 text-primary-600 animate-spin" />
-                <span>Fetching real available slots from database...</span>
+            {/* Manual Time Picker Card */}
+            <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-3 shadow-sm">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <label htmlFor="manual-time-picker" className="block text-xs font-bold text-slate-800 dark:text-slate-200">
+                    Preferred Time Picker (Manual Time Selection):
+                  </label>
+                  <p className="text-[11px] text-slate-500">
+                    Choose your exact preferred consultation time using the time picker, or click an available clinical duty slot below.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    id="manual-time-picker"
+                    type="time"
+                    value={selectedStartTime}
+                    onChange={e => handleManualTimeChange(e.target.value)}
+                    className="px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-xs font-bold text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-primary-500 shadow-sm"
+                  />
+                  <span className="text-xs font-bold px-3 py-2 rounded-xl bg-primary-100 dark:bg-primary-950 text-primary-700 dark:text-primary-300 border border-primary-200 dark:border-primary-900">
+                    {selectedSlot || 'Select time'}
+                  </span>
+                </div>
               </div>
-            ) : generatedSlots.length > 0 ? (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                {generatedSlots.map(slotItem => {
-                  const isSelected = selectedSlot === slotItem.slot;
-                  const isAvailable = slotItem.isAvailable;
 
-                  return (
-                    <button
-                      key={slotItem.slot}
-                      type="button"
-                      disabled={!isAvailable}
-                      onClick={() => {
-                        setSelectedSlot(slotItem.slot);
-                        setSelectedStartTime(slotItem.startTime);
-                        setSelectedEndTime(slotItem.endTime);
-                      }}
-                      className={`p-3 rounded-xl border text-center text-xs font-bold transition-all relative ${
-                        !isAvailable
-                          ? 'opacity-40 cursor-not-allowed bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-400 line-through'
-                          : isSelected
-                          ? 'bg-primary-600 text-white shadow-md border-primary-600 ring-2 ring-primary-400'
-                          : 'border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200'
-                      }`}
-                    >
-                      <Clock className="w-3.5 h-3.5 inline mr-1" />
-                      {slotItem.slot}
-                      {!isAvailable && (
-                        <span className="block text-[9px] font-normal no-underline text-rose-500 mt-0.5">
-                          {slotItem.bookedReason || 'Unavailable'}
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="p-8 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 text-center text-xs text-amber-800 dark:text-amber-200 space-y-3">
-                <p className="font-semibold text-sm">
-                  No available consultation slots for {selectedDoctor?.name} on {formatDateFull(selectedDate)}.
-                </p>
-                <p className="text-xs text-slate-600 dark:text-slate-400">
-                  {selectedDoctor?.name} holds consultations on:{' '}
-                  <span className="font-semibold text-slate-800 dark:text-slate-200">
-                    {selectedDoctor?.availableDays?.join(', ') || selectedDoctor?.availability_days?.join(', ') || 'Monday–Saturday'}
-                  </span>{' '}
-                  ({selectedDoctor?.availability_time || '10:00 AM–1:00 PM'}).
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setStep(3)}
-                  className="px-4 py-2 rounded-xl bg-primary-600 hover:bg-primary-700 text-white font-bold text-xs shadow inline-flex items-center gap-1.5 transition-colors"
+              {/* Live validation feedback */}
+              {timeValidation && (
+                <div
+                  className={`p-3 rounded-xl text-xs flex items-center gap-2 font-medium transition-all ${
+                    timeValidation.isValid
+                      ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-900/50'
+                      : 'bg-rose-50 dark:bg-rose-950/40 text-rose-800 dark:text-rose-300 border border-rose-200 dark:border-rose-900/50'
+                  }`}
                 >
-                  <ArrowLeft className="w-3.5 h-3.5" /> Choose Another Date on Calendar
-                </button>
+                  {timeValidation.isValid ? (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
+                  ) : (
+                    <AlertCircle className="w-4 h-4 text-rose-600 dark:text-rose-400 flex-shrink-0" />
+                  )}
+                  <span>{timeValidation.message}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Clinical Duty Slots Grid */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                  Available Clinical Duty Slots:
+                </span>
+                <span className="text-[11px] text-slate-500">
+                  Click any slot to select and auto-sync with time picker
+                </span>
               </div>
-            )}
+
+              {loadingSlots ? (
+                <div className="p-8 rounded-2xl bg-slate-50 dark:bg-slate-800 text-center text-xs text-slate-500 flex items-center justify-center gap-2">
+                  <Clock className="w-4 h-4 text-primary-600 animate-spin" />
+                  <span>Fetching live slot availability from database...</span>
+                </div>
+              ) : generatedSlots.length > 0 ? (
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                  {generatedSlots.map(slotItem => {
+                    const isSelected = selectedSlot === slotItem.slot;
+                    const isAvailable = slotItem.isAvailable;
+
+                    return (
+                      <button
+                        key={slotItem.slot}
+                        type="button"
+                        disabled={!isAvailable}
+                        onClick={() => handleSlotSelection(slotItem)}
+                        className={`p-3 rounded-xl border text-center text-xs font-bold transition-all relative ${
+                          !isAvailable
+                            ? 'opacity-40 cursor-not-allowed bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-400 line-through'
+                            : isSelected
+                            ? 'bg-primary-600 text-white shadow-md border-primary-600 ring-2 ring-primary-400'
+                            : 'border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200'
+                        }`}
+                      >
+                        <Clock className="w-3.5 h-3.5 inline mr-1" />
+                        {slotItem.slot}
+                        {!isAvailable && (
+                          <span className="block text-[9px] font-normal no-underline text-rose-500 mt-0.5">
+                            {slotItem.bookedReason || 'Unavailable'}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="p-8 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 text-center text-xs text-amber-800 dark:text-amber-200 space-y-3">
+                  <p className="font-semibold text-sm">
+                    No predefined duty slots for {selectedDoctor?.name} on {formatDateFull(selectedDate)}.
+                  </p>
+                  <p className="text-xs text-slate-600 dark:text-slate-400">
+                    You can use the manual time picker above to request a specific consultation time, or select another date on the calendar.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setStep(3)}
+                    className="px-4 py-2 rounded-xl bg-primary-600 hover:bg-primary-700 text-white font-bold text-xs shadow inline-flex items-center gap-1.5 transition-colors"
+                  >
+                    <ArrowLeft className="w-3.5 h-3.5" /> Choose Another Date on Calendar
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -496,7 +638,14 @@ export const AppointmentBookingPage: React.FC = () => {
               </div>
               <div className="flex justify-between border-b border-slate-200 dark:border-slate-700 pb-2">
                 <span className="text-slate-500">Date & Slot:</span>
-                <span className="font-bold text-slate-900 dark:text-white">{formatDateFull(selectedDate)} at {selectedSlot}</span>
+                <div className="text-right">
+                  <span className="font-bold text-slate-900 dark:text-white block">{formatDateFull(selectedDate)} at {selectedSlot}</span>
+                  {formatAppointmentScheduleDisplay(selectedDate, selectedSlot, selectedStartTime).isLocalDifferent && (
+                    <span className="text-[11px] text-slate-500 block">
+                      Local Time: {formatAppointmentScheduleDisplay(selectedDate, selectedSlot, selectedStartTime).displayLocal}
+                    </span>
+                  )}
+                </div>
               </div>
               <div className="flex justify-between border-b border-slate-200 dark:border-slate-700 pb-2">
                 <span className="text-slate-500">Mode:</span>

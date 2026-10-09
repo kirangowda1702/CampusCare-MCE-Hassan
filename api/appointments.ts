@@ -204,6 +204,43 @@ export function normalizeRow(d: any): any {
 }
 
 /**
+ * Loads all authoritative appointments from Supabase and merges with memory store.
+ */
+export async function loadAllAppointments(supabase: any, memoryStore: any[]): Promise<any[]> {
+  const appointmentMap = new Map<string, any>();
+
+  if (supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('appointments')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (!error && data && Array.isArray(data)) {
+        data.forEach((row: any) => {
+          const normalized = normalizeRow(row);
+          appointmentMap.set(normalized.bookingId, normalized);
+          appointmentMap.set(normalized.id, normalized);
+        });
+      }
+    } catch (err) {
+      console.warn('[api/appointments] Supabase fetch error in loadAllAppointments:', err);
+    }
+  }
+
+  memoryStore.forEach(apt => {
+    const normalized = normalizeRow(apt);
+    if (!appointmentMap.has(normalized.bookingId) && !appointmentMap.has(normalized.id)) {
+      appointmentMap.set(normalized.bookingId, normalized);
+    }
+  });
+
+  return Array.from(new Set(appointmentMap.values())).sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  );
+}
+
+/**
  * Robust appointment resolution helper.
  * Resolves by authoritative database UUID id, booking_id, or client ID safely without Postgres 22P02 UUID syntax errors.
  */
@@ -757,39 +794,38 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
-    const appointmentMap = new Map<string, any>();
+    // C. Query Booked Slots for Doctor Availability (Prevents Double Booking across all patients)
+    if (action === 'get_booked_slots') {
+      const targetDocId = (req.query?.doctorId || req.query?.doctor_id || '').toString().trim();
+      const targetDate = (req.query?.date || req.query?.appointmentDate || '').toString().trim();
 
-    // 1. Fetch from Supabase database if connected
-    if (supabase) {
-      try {
-        const { data, error } = await supabase
-          .from('appointments')
-          .select('*')
-          .order('created_at', { ascending: false });
-
-        if (!error && data && Array.isArray(data)) {
-          data.forEach(row => {
-            const normalized = normalizeRow(row);
-            appointmentMap.set(normalized.bookingId, normalized);
-            appointmentMap.set(normalized.id, normalized);
-          });
-        }
-      } catch (err) {
-        console.warn('[api/appointments] Supabase fetch error:', err);
+      if (!targetDocId || !targetDate) {
+        return res.status(400).json({ success: false, error: 'doctorId and date required' });
       }
+
+      const allAppointments = await loadAllAppointments(supabase, memoryStore);
+      const activeStatuses = ['pending', 'confirmed', 'accepted', 'in_progress'];
+      const booked = allAppointments.filter(apt => {
+        if (apt.appointmentDate !== targetDate) return false;
+        const docMatches = (
+          apt.doctorId === targetDocId ||
+          (targetDocId.toLowerCase().includes('kiran') && apt.doctorId === 'DOC001') ||
+          (targetDocId.toLowerCase().includes('madan') && apt.doctorId === 'DOC002') ||
+          (targetDocId === 'DOC001' && (apt.doctorId === 'd0000001-0000-0000-0000-000000000001' || apt.doctorId === 'DOC001')) ||
+          (targetDocId === 'DOC002' && (apt.doctorId === 'd0000002-0000-0000-0000-000000000002' || apt.doctorId === 'DOC002'))
+        );
+        return docMatches && activeStatuses.includes((apt.status || '').toLowerCase());
+      }).map(apt => ({
+        timeSlot: apt.timeSlot,
+        startTime: apt.startTime,
+        endTime: apt.endTime,
+        appointmentDate: apt.appointmentDate
+      }));
+
+      return res.status(200).json({ success: true, bookedSlots: booked });
     }
 
-    // 2. Merge with memory store records
-    memoryStore.forEach(apt => {
-      const normalized = normalizeRow(apt);
-      if (!appointmentMap.has(normalized.bookingId) && !appointmentMap.has(normalized.id)) {
-        appointmentMap.set(normalized.bookingId, normalized);
-      }
-    });
-
-    const allAppointments = Array.from(new Set(appointmentMap.values())).sort(
-      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    );
+    const allAppointments = await loadAllAppointments(supabase, memoryStore);
 
     // 3. Strict RLS Scope Enforcement:
     // - Admin: sees all appointments
@@ -863,6 +899,48 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({
         success: false,
         error: 'appointmentDate and timeSlot are required.'
+      });
+    }
+
+    // 1. Validate that the selected date and time is in the future
+    const scheduledEpoch = getAppointmentEpochMsIST(body.appointmentDate, body.timeSlot, body.startTime);
+    // 60-second grace window to absorb slight clock skews
+    if (scheduledEpoch !== null && scheduledEpoch < Date.now() - 60000) {
+      return res.status(400).json({
+        success: false,
+        error: 'Selected appointment date and time has already passed. Please select a future date and time.'
+      });
+    }
+
+    // 2. Prevent Double Booking for Target Doctor
+    const targetDocId = (body.doctorId || body.doctor_id || 'DOC001').toString();
+    const targetDate = body.appointmentDate.slice(0, 10);
+    const targetSlot = (body.timeSlot || '').trim().toLowerCase();
+    const targetStart = (body.startTime || '').trim();
+
+    const allAppointments = await loadAllAppointments(supabase, memoryStore);
+    const activeStatuses = ['pending', 'confirmed', 'accepted', 'in_progress'];
+    const doubleBooked = allAppointments.find(apt => {
+      if (apt.appointmentDate !== targetDate) return false;
+      const docMatches = (
+        apt.doctorId === targetDocId ||
+        (targetDocId.toLowerCase().includes('kiran') && apt.doctorId === 'DOC001') ||
+        (targetDocId.toLowerCase().includes('madan') && apt.doctorId === 'DOC002') ||
+        (targetDocId === 'DOC001' && (apt.doctorId === 'd0000001-0000-0000-0000-000000000001' || apt.doctorId === 'DOC001')) ||
+        (targetDocId === 'DOC002' && (apt.doctorId === 'd0000002-0000-0000-0000-000000000002' || apt.doctorId === 'DOC002'))
+      );
+      if (!docMatches) return false;
+      if (!activeStatuses.includes((apt.status || '').toLowerCase())) return false;
+
+      const slotMatch = (apt.timeSlot || '').trim().toLowerCase() === targetSlot;
+      const startMatch = targetStart && apt.startTime && apt.startTime.trim() === targetStart;
+      return slotMatch || startMatch;
+    });
+
+    if (doubleBooked) {
+      return res.status(409).json({
+        success: false,
+        error: `The time slot (${body.timeSlot}) on ${body.appointmentDate} is already reserved for this doctor. Please select another slot.`
       });
     }
 

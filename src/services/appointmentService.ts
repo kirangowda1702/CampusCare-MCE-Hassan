@@ -428,6 +428,80 @@ export const appointmentService = {
     return inMemoryAppointments;
   },
 
+  async getBookedSlotsForDoctor(doctorId: string, dateStr: string): Promise<{ timeSlot: string; startTime?: string }[]> {
+    if (!doctorId || !dateStr) return [];
+
+    let resolvedUser: any = null;
+    if (typeof localStorage !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('campuscare_user');
+        if (saved) resolvedUser = JSON.parse(saved);
+      } catch {}
+    }
+    const authHeaders = await getAuthHeaders(resolvedUser);
+
+    try {
+      if (typeof window !== 'undefined' && typeof fetch !== 'undefined') {
+        const url = `/api/appointments?action=get_booked_slots&doctorId=${encodeURIComponent(doctorId)}&date=${encodeURIComponent(dateStr)}`;
+        const res = await fetch(url, {
+          method: 'GET',
+          headers: authHeaders,
+          signal: typeof AbortSignal !== 'undefined' && AbortSignal.timeout ? AbortSignal.timeout(5000) : undefined
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.bookedSlots && Array.isArray(data.bookedSlots)) {
+            return data.bookedSlots;
+          }
+        }
+      }
+    } catch (e) {
+      // In offline / fallback mode, continue below
+    }
+
+    // Direct Supabase query fallback
+    if (isSupabaseConfigured) {
+      try {
+        const { data, error } = await supabase
+          .from('appointments')
+          .select('time_slot, start_time, doctor_id, status, appointment_date')
+          .eq('appointment_date', dateStr);
+
+        if (!error && data && Array.isArray(data)) {
+          const activeStatuses = ['pending', 'confirmed', 'accepted', 'in_progress'];
+          const matched = data.filter((d: any) => {
+            const status = (d.status || 'pending').toLowerCase();
+            if (!activeStatuses.includes(status)) return false;
+            const docId = (d.doctor_id || '').toString();
+            return (
+              docId === doctorId ||
+              (doctorId === 'DOC001' && docId.includes('d0000001')) ||
+              (doctorId === 'DOC002' && docId.includes('d0000002'))
+            );
+          });
+          return matched.map((d: any) => ({
+            timeSlot: d.time_slot,
+            startTime: d.start_time
+          }));
+        }
+      } catch (err) {}
+    }
+
+    // Local in-memory fallback
+    const all = inMemoryAppointments.filter(a => {
+      if (a.appointmentDate !== dateStr) return false;
+      const status = (a.status || 'pending').toLowerCase();
+      if (status === 'cancelled' || status === 'rejected') return false;
+      return (
+        a.doctorId === doctorId ||
+        (doctorId === 'DOC001' && a.doctorId?.toLowerCase().includes('kiran')) ||
+        (doctorId === 'DOC002' && a.doctorId?.toLowerCase().includes('madan'))
+      );
+    });
+
+    return all.map(a => ({ timeSlot: a.timeSlot, startTime: a.startTime }));
+  },
+
   async createAppointment(appointment: Omit<Appointment, 'id' | 'bookingId' | 'createdAt'>, userContext?: any): Promise<Appointment> {
     // 1. Past date validation
     if (!appointment.appointmentDate || isDateInPast(appointment.appointmentDate)) {
@@ -439,19 +513,19 @@ export const appointmentService = {
       throw new Error('Selected time slot has already passed for today. Please select a future time slot.');
     }
 
-    // 3. Double booking prevention check
-    const existing = await this.getAppointments(userContext);
-    const isDoubleBooked = existing.some(
-      a =>
-        a.doctorId === appointment.doctorId &&
-        a.appointmentDate === appointment.appointmentDate &&
-        (a.timeSlot === appointment.timeSlot || (a.startTime && appointment.startTime && a.startTime === appointment.startTime)) &&
-        a.status !== 'cancelled' &&
-        a.status !== 'rejected'
+    // 3. Double booking prevention check across all patients
+    const booked = await this.getBookedSlotsForDoctor(appointment.doctorId, appointment.appointmentDate);
+    const targetSlot = (appointment.timeSlot || '').trim().toLowerCase();
+    const targetStart = (appointment.startTime || '').trim();
+
+    const isDoubleBooked = booked.some(
+      b =>
+        (b.timeSlot && b.timeSlot.trim().toLowerCase() === targetSlot) ||
+        (targetStart && b.startTime && b.startTime.trim() === targetStart)
     );
 
     if (isDoubleBooked) {
-      throw new Error('Time slot no longer available. Please select another slot.');
+      throw new Error(`The time slot (${appointment.timeSlot}) is already booked for this doctor. Please choose another slot.`);
     }
 
     const randomNum = Math.floor(1000 + Math.random() * 9000);
@@ -474,14 +548,21 @@ export const appointmentService = {
       if (typeof window !== 'undefined' && typeof fetch !== 'undefined') {
         const callerContext = userContext || { id: appointment.patientId, role: appointment.patientRole, email: appointment.patientEmail };
         const postHeaders = await getAuthHeaders(callerContext);
-        await fetch('/api/appointments', {
+        const res = await fetch('/api/appointments', {
           method: 'POST',
           headers: { ...postHeaders, 'Content-Type': 'application/json' },
           body: JSON.stringify(newApt),
           signal: typeof AbortSignal !== 'undefined' && AbortSignal.timeout ? AbortSignal.timeout(6000) : undefined
         });
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error || `Booking failed with status ${res.status}`);
+        }
       }
-    } catch (apiErr) {
+    } catch (apiErr: any) {
+      if (apiErr?.message && (apiErr.message.includes('already reserved') || apiErr.message.includes('already booked') || apiErr.message.includes('already passed') || apiErr.message.includes('Forbidden'))) {
+        throw apiErr;
+      }
       console.warn('[appointmentService] API persistence warning:', apiErr);
     }
 

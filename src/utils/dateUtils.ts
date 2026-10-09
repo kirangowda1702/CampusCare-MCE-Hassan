@@ -371,3 +371,133 @@ export function checkAppointmentAccessIST(
     status: rawStatus
   };
 }
+
+/**
+ * Converts a 24-hour time string ("11:30" or "14:15") to 12-hour format ("11:30 AM" or "02:15 PM").
+ */
+export function convert24To12(time24: string): string {
+  if (!time24) return '';
+  const [hStr, mStr] = time24.split(':');
+  const h = parseInt(hStr, 10);
+  const m = parseInt(mStr || '0', 10);
+  if (isNaN(h)) return time24;
+  const period = h >= 12 ? 'PM' : 'AM';
+  const displayH = h % 12 === 0 ? 12 : h % 12;
+  return `${String(displayH).padStart(2, '0')}:${String(m).padStart(2, '0')} ${period}`;
+}
+
+/**
+ * Converts a 12-hour time string ("11:30 AM" or "2:15 PM") to 24-hour format ("11:30" or "14:15").
+ */
+export function convert12To24(time12: string): string {
+  if (!time12) return '';
+  const match = time12.match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
+  if (!match) return time12;
+  let h = parseInt(match[1], 10);
+  const m = parseInt(match[2], 10);
+  const period = match[3]?.toUpperCase();
+  if (period === 'PM' && h < 12) h += 12;
+  if (period === 'AM' && h === 12) h = 0;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+/**
+ * Calculates end time given start time ("11:30") and duration in minutes.
+ */
+export function calculateSlotEndTime(startTime24: string, durationMinutes = 30): string {
+  if (!startTime24) return '';
+  const [h, m] = startTime24.split(':').map(Number);
+  if (isNaN(h) || isNaN(m)) return startTime24;
+  const totalM = h * 60 + m + durationMinutes;
+  const endH = Math.floor(totalM / 60) % 24;
+  const endM = totalM % 60;
+  return `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
+}
+
+export interface AppointmentScheduleDisplay {
+  dateIST: string;
+  timeSlotIST: string;
+  epochMs: number | null;
+  displayIST: string;
+  displayFullIST: string;
+  displayLocal: string;
+  isLocalDifferent: boolean;
+  localTimezone: string;
+}
+
+/**
+ * Formats appointment schedule consistently, converting to user's local timezone if different from IST.
+ */
+export function formatAppointmentScheduleDisplay(
+  appointmentDate: string,
+  timeSlot: string,
+  startTime?: string
+): AppointmentScheduleDisplay {
+  const epochMs = getAppointmentEpochMsIST(appointmentDate, timeSlot, startTime);
+  const userTimezone = typeof Intl !== 'undefined' && Intl.DateTimeFormat
+    ? (Intl.DateTimeFormat().resolvedOptions().timeZone || TIMEZONE_IST)
+    : TIMEZONE_IST;
+  const isLocalDifferent = userTimezone !== TIMEZONE_IST && userTimezone !== 'UTC+5:30';
+
+  const cleanDate = appointmentDate ? appointmentDate.slice(0, 10) : getTodayIST();
+  const cleanSlot = timeSlot || '10:00 AM';
+
+  let displayIST = `${cleanDate} at ${cleanSlot}`;
+  let displayFullIST = `${formatDateFull(cleanDate)} at ${cleanSlot} IST`;
+  let displayLocal = `${cleanSlot} IST`;
+
+  if (epochMs) {
+    const dateObj = new Date(epochMs);
+    try {
+      const istFormatter = new Intl.DateTimeFormat('en-IN', {
+        timeZone: TIMEZONE_IST,
+        weekday: 'short',
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true
+      });
+      displayIST = `${istFormatter.format(dateObj)} IST`;
+
+      const istFullFormatter = new Intl.DateTimeFormat('en-IN', {
+        timeZone: TIMEZONE_IST,
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true
+      });
+      displayFullIST = `${istFullFormatter.format(dateObj)} IST`;
+
+      if (isLocalDifferent) {
+        const localFormatter = new Intl.DateTimeFormat(undefined, {
+          timeZone: userTimezone,
+          weekday: 'short',
+          month: 'short',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: true
+        });
+        displayLocal = `${localFormatter.format(dateObj)} (${userTimezone})`;
+      }
+    } catch {
+      // Fallback
+    }
+  }
+
+  return {
+    dateIST: cleanDate,
+    timeSlotIST: cleanSlot,
+    epochMs,
+    displayIST,
+    displayFullIST,
+    displayLocal,
+    isLocalDifferent,
+    localTimezone: userTimezone
+  };
+}

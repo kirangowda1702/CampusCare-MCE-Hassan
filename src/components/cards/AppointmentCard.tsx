@@ -3,7 +3,7 @@ import { Calendar, Clock, Video, User, FileText, ChevronRight, XCircle, Lock } f
 import { Appointment } from '../../types';
 import { StatusBadge } from '../common/StatusBadge';
 import { Link } from 'react-router-dom';
-import { checkAppointmentAccessIST } from '../../utils/dateUtils';
+import { checkAppointmentAccessIST, formatAppointmentScheduleDisplay, formatDateShort } from '../../utils/dateUtils';
 
 interface AppointmentCardProps {
   appointment: Appointment;
@@ -35,6 +35,11 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({
 
   const access = checkAppointmentAccessIST(appointment);
   const isTimeReached = access.isTimeReached || isInProgress;
+  const schedule = formatAppointmentScheduleDisplay(
+    appointment.appointmentDate,
+    appointment.timeSlot,
+    appointment.startTime
+  );
 
   const bookingTimestamp = appointment.createdAt
     ? new Date(appointment.createdAt).toLocaleDateString([], {
@@ -74,12 +79,17 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({
       <div className="grid grid-cols-2 gap-2 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800 text-xs mb-4">
         <div className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300">
           <Calendar className="w-3.5 h-3.5 text-primary-500" />
-          <span>{appointment.appointmentDate}</span>
+          <span>{formatDateShort(appointment.appointmentDate) || appointment.appointmentDate}</span>
         </div>
         <div className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300">
           <Clock className="w-3.5 h-3.5 text-primary-500" />
           <span>{appointment.timeSlot}</span>
         </div>
+        {schedule.isLocalDifferent && (
+          <div className="col-span-2 text-[11px] text-primary-600 dark:text-primary-400">
+            <span>Local Time: {schedule.displayLocal}</span>
+          </div>
+        )}
         <div className="col-span-2 text-slate-600 dark:text-slate-400 truncate">
           <span className="font-semibold text-slate-700 dark:text-slate-300">Reason: </span>
           {appointment.reason}
