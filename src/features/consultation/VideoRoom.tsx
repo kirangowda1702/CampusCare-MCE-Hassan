@@ -67,6 +67,7 @@ export const VideoRoom: React.FC<VideoRoomProps> = ({ appointment }) => {
   const localCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
   const sessionIdRef = useRef<string | null>(null);
   const sessionDurationRef = useRef(0);
+  const localMediaPromiseRef = useRef<Promise<MediaStream | null> | null>(null);
 
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [newMessage, setNewMessage] = useState('');
@@ -141,6 +142,9 @@ export const VideoRoom: React.FC<VideoRoomProps> = ({ appointment }) => {
 
   // Helper: Start or acquire local media
   const startLocalMedia = async (): Promise<MediaStream | null> => {
+    if (streamRef.current && streamRef.current.getTracks().some(t => t.readyState === 'live')) {
+      return streamRef.current;
+    }
     try {
       setMediaError(null);
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -211,6 +215,16 @@ export const VideoRoom: React.FC<VideoRoomProps> = ({ appointment }) => {
     }
   };
 
+  const getOrCreateLocalMedia = (): Promise<MediaStream | null> => {
+    if (streamRef.current && streamRef.current.getTracks().some(t => t.readyState === 'live')) {
+      return Promise.resolve(streamRef.current);
+    }
+    if (!localMediaPromiseRef.current) {
+      localMediaPromiseRef.current = startLocalMedia();
+    }
+    return localMediaPromiseRef.current;
+  };
+
   // Synchronize local video element srcObject whenever stream or camera state updates
   useEffect(() => {
     const videoEl = localVideoRef.current;
@@ -232,6 +246,7 @@ export const VideoRoom: React.FC<VideoRoomProps> = ({ appointment }) => {
   // Play remote video with autoplay policy detection and safe diagnostics
   const playRemoteVideo = async (videoEl: HTMLVideoElement) => {
     try {
+      console.log('[WebRTC] REMOTE_VIDEO_PLAY');
       console.log('[WebRTC] REMOTE_VIDEO_PLAY_ATTEMPT');
       await videoEl.play();
       console.log('[WebRTC] REMOTE_VIDEO_PLAY_SUCCESS');
@@ -247,15 +262,23 @@ export const VideoRoom: React.FC<VideoRoomProps> = ({ appointment }) => {
   };
 
   // Direct user-initiated click handler for the tap-to-play button
-  const handleEnableRemoteVideoClick = () => {
+  const handleEnableRemoteVideoClick = async () => {
     const videoEl = remoteVideoRef.current;
     if (!videoEl) return;
+    console.log('[WebRTC] REMOTE_VIDEO_PLAY');
     console.log('[WebRTC] User clicked Enable Remote Video button');
     if (remoteStreamRef.current && videoEl.srcObject !== remoteStreamRef.current) {
       videoEl.srcObject = remoteStreamRef.current;
     }
     videoEl.playsInline = true;
-    playRemoteVideo(videoEl);
+    try {
+      await videoEl.play();
+      setAutoplayBlocked(false);
+      setPeerConnected(true);
+      console.log('[WebRTC] REMOTE_VIDEO_PLAY_SUCCESS');
+    } catch (err) {
+      console.warn('[WebRTC] Remote video manual play error:', err);
+    }
   };
 
   // Synchronize remote video element srcObject whenever peer connects or remote stream arrives
@@ -351,6 +374,47 @@ export const VideoRoom: React.FC<VideoRoomProps> = ({ appointment }) => {
       }
     };
 
+    // Helper: Attach local media tracks to RTCPeerConnection without duplication
+    const attachStreamTracksToPc = (stream: MediaStream, targetPc: RTCPeerConnection) => {
+      const senders = targetPc.getSenders();
+      stream.getTracks().forEach(track => {
+        const existingSender = senders.find(s => s.track && s.track.kind === track.kind);
+        if (existingSender) {
+          existingSender.replaceTrack(track).catch(e => console.warn('[WebRTC] replaceTrack warning:', e));
+        } else {
+          try {
+            targetPc.addTrack(track, stream);
+            console.log('[WebRTC] Attached local track to PeerConnection:', track.kind, track.label);
+          } catch (e) {
+            console.warn('[WebRTC] Error adding track:', e);
+          }
+        }
+      });
+    };
+
+    // Helper: Guarantee local tracks are attached before generating offer or answer
+    const ensureLocalTracksAttached = async (targetPc: RTCPeerConnection | null): Promise<boolean> => {
+      if (!targetPc) return false;
+      const currentSenders = targetPc.getSenders();
+      if (currentSenders.length > 0 && currentSenders.some(s => s.track && s.track.readyState === 'live')) {
+        return true;
+      }
+      try {
+        const stream = await getOrCreateLocalMedia();
+        if (stream && targetPc) {
+          attachStreamTracksToPc(stream, targetPc);
+          const senders = targetPc.getSenders();
+          const hasVideoSender = senders.some(s => s.track && s.track.kind === 'video');
+          const hasAudioSender = senders.some(s => s.track && s.track.kind === 'audio');
+          console.log('[WebRTC] Local senders verified - Video:', hasVideoSender, 'Audio:', hasAudioSender);
+          return senders.length > 0;
+        }
+      } catch (err) {
+        console.warn('[WebRTC] ensureLocalTracksAttached error:', err);
+      }
+      return false;
+    };
+
     try {
       pc = new RTCPeerConnection(rtcConfig);
       peerConnectionRef.current = pc;
@@ -390,8 +454,18 @@ export const VideoRoom: React.FC<VideoRoomProps> = ({ appointment }) => {
           setPeerLeft(false);
           setSignalingStatus('Live Encrypted P2P Stream Established');
         } else if (pc?.iceConnectionState === 'failed') {
-          setPeerConnected(false);
-          setSignalingStatus('ICE Connection Failed (TURN server required for symmetric NAT)');
+          if (isDoctor && pc.signalingState === 'stable') {
+            console.log('[WebRTC] ICE failed - Doctor triggering ICE restart...');
+            try {
+              pc.restartIce();
+              triggerOffer?.();
+            } catch (restartErr) {
+              console.warn('[WebRTC] restartIce error:', restartErr);
+            }
+          } else {
+            setPeerConnected(false);
+            setSignalingStatus('ICE Connection Failed (TURN server required for symmetric NAT)');
+          }
         } else if (pc?.iceConnectionState === 'disconnected') {
           setPeerConnected(false);
           setSignalingStatus('Peer Disconnected — Awaiting Reconnection');
@@ -425,8 +499,18 @@ export const VideoRoom: React.FC<VideoRoomProps> = ({ appointment }) => {
           setPeerConnected(false);
           setSignalingStatus('Connection Interrupted — Reconnecting...');
         } else if (state === 'failed') {
-          setPeerConnected(false);
-          setSignalingStatus('WebRTC Direct Connection Failed (STUN/TURN required)');
+          if (isDoctor && pc.signalingState === 'stable') {
+            console.log('[WebRTC] Peer connection failed - Doctor triggering ICE restart...');
+            try {
+              pc.restartIce();
+              triggerOffer?.();
+            } catch (restartErr) {
+              console.warn('[WebRTC] restartIce error:', restartErr);
+            }
+          } else {
+            setPeerConnected(false);
+            setSignalingStatus('WebRTC Direct Connection Failed (STUN/TURN required)');
+          }
         } else if (state === 'closed') {
           setPeerConnected(false);
           setSignalingStatus('Consultation Closed');
@@ -435,18 +519,24 @@ export const VideoRoom: React.FC<VideoRoomProps> = ({ appointment }) => {
 
       // ICE Candidate Handler
       pc.onicecandidate = event => {
-        if (event.candidate) {
+        if (event.candidate && event.candidate.candidate) {
           const candType = parseCandidateType(event.candidate.candidate);
           console.log('[WebRTC] ICE_CANDIDATE_TYPE:', candType);
           console.log('[WebRTC] ICE_SENT:', event.candidate.candidate);
           console.log('[WebRTC] ICE candidate sent:', event.candidate.candidate);
-          localCandidatesRef.current.push(event.candidate.toJSON());
-          signaling.sendSignal('candidate', event.candidate.toJSON());
+          const candJson = {
+            candidate: event.candidate.candidate,
+            sdpMid: event.candidate.sdpMid,
+            sdpMLineIndex: event.candidate.sdpMLineIndex
+          };
+          localCandidatesRef.current.push(candJson);
+          signaling.sendSignal('candidate', candJson);
         }
       };
 
       // Remote Track Handler
       pc.ontrack = async event => {
+        console.log('[WebRTC] REMOTE_TRACK_RECEIVED:', event.track.kind);
         console.log('[WebRTC] Remote track received:', event.track.kind);
         const remoteStream = event.streams?.[0] || new MediaStream([event.track]);
         remoteStreamRef.current = remoteStream;
@@ -454,7 +544,9 @@ export const VideoRoom: React.FC<VideoRoomProps> = ({ appointment }) => {
 
         const videoEl = remoteVideoRef.current;
         if (videoEl) {
-          videoEl.srcObject = remoteStream;
+          if (videoEl.srcObject !== remoteStream) {
+            videoEl.srcObject = remoteStream;
+          }
           videoEl.playsInline = true;
           await playRemoteVideo(videoEl);
         }
@@ -462,25 +554,23 @@ export const VideoRoom: React.FC<VideoRoomProps> = ({ appointment }) => {
         setPeerConnected(true);
         signalingRef.current?.setPeerConnected(true);
         setPeerLeft(false);
+        setSignalingStatus('Live Encrypted P2P Stream Established');
       };
 
       // Perfect Negotiation: onnegotiationneeded
       pc.onnegotiationneeded = async () => {
         try {
           if (!pc) return;
+          // Polite peer waits for Doctor initial offer to avoid colliding offers
+          if (!isDoctor && !peerConnected) {
+            console.log('[WebRTC] Polite peer waiting for Doctor initial offer (avoiding offer collision)');
+            return;
+          }
           console.log('[WebRTC] onnegotiationneeded fired. isMakingOffer:', isMakingOffer, 'signalingState:', pc.signalingState);
-          isMakingOffer = true;
-          const offer = await pc.createOffer();
-          if (pc.signalingState !== 'stable') return;
-          await pc.setLocalDescription(offer);
-          console.log('[WebRTC] OFFER_CREATED');
-          console.log('[WebRTC] Offer created');
-          console.log('[WebRTC] OFFER_SENT');
-          signaling.sendSignal('offer', pc.localDescription);
+          if (isMakingOffer || pc.signalingState !== 'stable') return;
+          await triggerOffer?.();
         } catch (err) {
           console.warn('[WebRTC] Negotiation offer error:', err);
-        } finally {
-          isMakingOffer = false;
         }
       };
 
@@ -488,27 +578,40 @@ export const VideoRoom: React.FC<VideoRoomProps> = ({ appointment }) => {
       triggerOffer = async () => {
         if (!pc) return;
         try {
+          // Guarantee local tracks are attached before generating the offer
+          await ensureLocalTracksAttached(pc);
+
           if (pc.signalingState !== 'stable') {
             if (pc.signalingState === 'have-local-offer' && pc.localDescription) {
               console.log('[WebRTC] Signaling state is have-local-offer, re-broadcasting existing local offer');
               console.log('[WebRTC] OFFER_SENT');
-              signaling.sendSignal('offer', pc.localDescription);
+              const descPayload = {
+                type: pc.localDescription.type,
+                sdp: pc.localDescription.sdp
+              };
+              signaling.sendSignal('offer', descPayload);
               resendLocalCandidates();
             } else {
               console.log('[WebRTC] Skipping triggerOffer: signalingState is:', pc.signalingState);
             }
             return;
           }
+
           isMakingOffer = true;
           const offer = await pc.createOffer({
             offerToReceiveAudio: true,
             offerToReceiveVideo: true
           });
+          if (pc.signalingState !== 'stable') return;
           await pc.setLocalDescription(offer);
           console.log('[WebRTC] OFFER_CREATED');
           console.log('[WebRTC] Offer created');
           console.log('[WebRTC] OFFER_SENT');
-          signaling.sendSignal('offer', pc.localDescription);
+          const descPayload = {
+            type: pc.localDescription?.type || offer.type,
+            sdp: pc.localDescription?.sdp || offer.sdp
+          };
+          signaling.sendSignal('offer', descPayload);
         } catch (err) {
           console.warn('[WebRTC] triggerOffer error:', err);
         } finally {
@@ -523,6 +626,7 @@ export const VideoRoom: React.FC<VideoRoomProps> = ({ appointment }) => {
         try {
           if (payload.type === 'peer-joined') {
             console.log('[WebRTC] PEER_JOINED:', payload.senderName || payload.senderId);
+            console.log('[WebRTC] PEER_PRESENCE_RECEIVED');
             setPeerLeft(false);
             setRemotePeerPresent(true);
             const peerName = payload.senderName || 'Participant';
@@ -540,11 +644,11 @@ export const VideoRoom: React.FC<VideoRoomProps> = ({ appointment }) => {
             // Re-send our cached candidates
             resendLocalCandidates();
 
-            // If we are the doctor, or have local tracks ready, initiate or re-send offer
-            if (isDoctor || (pc && pc.getSenders().length > 0)) {
+            // If Doctor, initiate offer now
+            if (isDoctor) {
               setTimeout(() => {
                 triggerOffer?.();
-              }, 200);
+              }, 150);
             }
           } else if (payload.type === 'peer-presence') {
             console.log('[WebRTC] PEER_PRESENCE_RECEIVED');
@@ -562,20 +666,23 @@ export const VideoRoom: React.FC<VideoRoomProps> = ({ appointment }) => {
             if (isDoctor && pc) {
               setTimeout(() => {
                 triggerOffer?.();
-              }, 200);
-            } else if (!isDoctor && pc && pc.signalingState === 'stable' && pc.getSenders().length > 0) {
-              // Polite fallback: if doctor hasn't offered within 1.5s, initiate offer safely
+              }, 150);
+            } else if (!isDoctor && pc && pc.signalingState === 'stable' && !peerConnected) {
+              // Polite fallback: if doctor hasn't offered within 2s, initiate offer safely
               setTimeout(() => {
-                if (pc && pc.signalingState === 'stable' && !peerConnected) {
+                if (pc && pc.signalingState === 'stable' && !peerConnected && !isSettingRemoteAnswerPending) {
                   console.log('[WebRTC] Polite peer safety timeout - triggering offer fallback');
                   triggerOffer?.();
                 }
-              }, 1500);
+              }, 2000);
             }
           } else if (payload.type === 'offer' && payload.data && pc) {
             console.log('[WebRTC] OFFER_RECEIVED');
             console.log('[WebRTC] Offer received');
             setPeerLeft(false);
+
+            // Ensure local tracks are attached before creating answer!
+            await ensureLocalTracksAttached(pc);
             
             const offerCollision = isMakingOffer || pc.signalingState !== 'stable';
             isIgnoringOffer = !isPolite && offerCollision;
@@ -589,7 +696,8 @@ export const VideoRoom: React.FC<VideoRoomProps> = ({ appointment }) => {
               await pc.setLocalDescription({ type: 'rollback' } as any);
             }
 
-            await pc.setRemoteDescription(new RTCSessionDescription(payload.data));
+            const sdpData = payload.data?.sdp ? payload.data : payload.data;
+            await pc.setRemoteDescription(new RTCSessionDescription(sdpData));
             await processQueuedCandidates(pc);
 
             const answer = await pc.createAnswer();
@@ -597,7 +705,11 @@ export const VideoRoom: React.FC<VideoRoomProps> = ({ appointment }) => {
             console.log('[WebRTC] ANSWER_CREATED');
             console.log('[WebRTC] Answer created');
             console.log('[WebRTC] ANSWER_SENT');
-            signaling.sendSignal('answer', pc.localDescription);
+            const descPayload = {
+              type: pc.localDescription?.type || answer.type,
+              sdp: pc.localDescription?.sdp || answer.sdp
+            };
+            signaling.sendSignal('answer', descPayload);
             
             // Re-send our candidates now that answer is ready
             resendLocalCandidates();
@@ -605,24 +717,28 @@ export const VideoRoom: React.FC<VideoRoomProps> = ({ appointment }) => {
             console.log('[WebRTC] ANSWER_RECEIVED');
             console.log('[WebRTC] Answer received');
             isSettingRemoteAnswerPending = true;
-            await pc.setRemoteDescription(new RTCSessionDescription(payload.data));
+            const sdpData = payload.data?.sdp ? payload.data : payload.data;
+            await pc.setRemoteDescription(new RTCSessionDescription(sdpData));
             isSettingRemoteAnswerPending = false;
             await processQueuedCandidates(pc);
             resendLocalCandidates();
           } else if (payload.type === 'candidate' && payload.data && pc) {
-            const candType = parseCandidateType(payload.data?.candidate);
-            console.log('[WebRTC] ICE_CANDIDATE_TYPE:', candType);
-            console.log('[WebRTC] ICE_RECEIVED:', payload.data?.candidate || payload.data);
-            console.log('[WebRTC] ICE candidate received:', payload.data?.candidate || payload.data);
-            try {
-              if (pc.remoteDescription && pc.remoteDescription.type) {
-                await pc.addIceCandidate(new RTCIceCandidate(payload.data));
-              } else {
-                iceCandidatesQueue.current.push(payload.data);
-              }
-            } catch (candErr) {
-              if (!isIgnoringOffer) {
-                console.warn('[WebRTC] Error adding received ICE candidate:', candErr);
+            const candidateStr = payload.data?.candidate || (typeof payload.data === 'string' ? payload.data : '');
+            if (candidateStr) {
+              const candType = parseCandidateType(candidateStr);
+              console.log('[WebRTC] ICE_CANDIDATE_TYPE:', candType);
+              console.log('[WebRTC] ICE_RECEIVED:', candidateStr);
+              console.log('[WebRTC] ICE candidate received:', candidateStr);
+              try {
+                if (pc.remoteDescription && pc.remoteDescription.type) {
+                  await pc.addIceCandidate(new RTCIceCandidate(payload.data));
+                } else {
+                  iceCandidatesQueue.current.push(payload.data);
+                }
+              } catch (candErr) {
+                if (!isIgnoringOffer) {
+                  console.warn('[WebRTC] Error adding received ICE candidate:', candErr);
+                }
               }
             }
           } else if (payload.type === 'peer-left') {
@@ -652,36 +768,30 @@ export const VideoRoom: React.FC<VideoRoomProps> = ({ appointment }) => {
     }
 
     // Acquire Local Media and attach tracks to RTCPeerConnection
-    startLocalMedia().then(stream => {
-      if (stream && pc) {
-        stream.getTracks().forEach(track => {
-          try {
-            pc?.addTrack(track, stream);
-            console.log('[WebRTC] Attached local track to PeerConnection:', track.kind, track.label);
-          } catch (e) {
-            console.warn('[WebRTC] Error adding track to peer connection:', e);
-          }
-        });
+    getOrCreateLocalMedia().then(stream => {
+      if (!isMounted || !pc) return;
+      if (stream) {
+        attachStreamTracksToPc(stream, pc);
 
-        // Verify senders
         const senders = pc.getSenders();
         const hasVideoSender = senders.some(s => s.track && s.track.kind === 'video');
         const hasAudioSender = senders.some(s => s.track && s.track.kind === 'audio');
         console.log('[WebRTC] Local senders verified - Video sender:', hasVideoSender, 'Audio sender:', hasAudioSender);
 
-        // If Doctor and ready with tracks, initiate offer
-        if (isDoctor && triggerOffer) {
-          setTimeout(() => {
-            if (triggerOffer) triggerOffer();
-          }, 300);
-        }
-
         // Broadcast presence after media is attached so other peer knows we are ready with tracks
+        console.log('[WebRTC] PEER_PRESENCE_SENT');
         signaling.sendSignal('peer-presence', {
           userId: currentUserId,
           role: currentUserRole,
           name: currentUserName
         });
+
+        // If Doctor and ready with tracks, initiate offer
+        if (isDoctor && triggerOffer) {
+          setTimeout(() => {
+            if (triggerOffer) triggerOffer();
+          }, 200);
+        }
       }
     });
 
@@ -956,7 +1066,7 @@ export const VideoRoom: React.FC<VideoRoomProps> = ({ appointment }) => {
                 ref={remoteVideoRef}
                 autoPlay
                 playsInline
-                className={`w-full h-full object-cover ${peerConnected ? 'block' : 'hidden'}`}
+                className={`w-full h-full object-cover ${(peerConnected || remoteStreamRef.current) ? 'block' : 'hidden'}`}
               />
               {autoplayBlocked && (
                 <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/80 backdrop-blur-sm p-4">
@@ -975,7 +1085,7 @@ export const VideoRoom: React.FC<VideoRoomProps> = ({ appointment }) => {
                   {isDoctor ? appointment.patientName : doctorDisplayName} (Live Remote)
                 </div>
               )}
-              {!peerConnected && (
+              {(!peerConnected && !remoteStreamRef.current) && (
                 <div className="text-center space-y-4 max-w-md px-6">
                   <div className="w-20 h-20 rounded-full bg-slate-800 border-2 border-primary-500/30 flex items-center justify-center mx-auto text-primary-400">
                     <Radio className="w-8 h-8 animate-pulse" />

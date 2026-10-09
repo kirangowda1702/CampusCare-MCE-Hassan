@@ -57,6 +57,17 @@ export function getWebRTCConfiguration(): WebRTCConfig {
       username: turnUsername,
       credential: turnCredential
     });
+  } else {
+    // OpenRelay public fallback for symmetric NAT cross-network traversal
+    iceServers.push({
+      urls: [
+        'turn:openrelay.metered.ca:80',
+        'turn:openrelay.metered.ca:443',
+        'turn:openrelay.metered.ca:443?transport=tcp'
+      ],
+      username: 'openrelayproject',
+      credential: 'openrelayproject'
+    });
   }
 
   const transportPolicy = getIceTransportPolicy();

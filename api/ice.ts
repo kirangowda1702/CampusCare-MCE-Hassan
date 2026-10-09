@@ -153,10 +153,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   }
 
-  // Fallback: If Xirsys is not configured or fails, return standard STUN server
+  // Fallback: If Xirsys is not configured or fails, return STUN + reliable OpenRelay TURN servers
+  const fallbackServers = [
+    { urls: defaultStun },
+    {
+      urls: [
+        'turn:openrelay.metered.ca:80',
+        'turn:openrelay.metered.ca:443',
+        'turn:openrelay.metered.ca:443?transport=tcp'
+      ],
+      username: 'openrelayproject',
+      credential: 'openrelayproject'
+    }
+  ];
+
   return res.status(200).json({
-    iceServers: [
-      { urls: defaultStun }
-    ]
+    iceServers: fallbackServers
   });
 }
