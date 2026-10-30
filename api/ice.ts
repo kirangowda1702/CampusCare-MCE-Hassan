@@ -116,12 +116,35 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const defaultStun = (process.env.STUN_SERVER || process.env.VITE_STUN_SERVER || 'stun:stun.l.google.com:19302').trim();
 
-  // 1. Read rotated Xirsys credentials from server environment only
+  const standardStunServers = [
+    {
+      urls: [
+        defaultStun,
+        'stun:stun1.l.google.com:19302',
+        'stun:stun2.l.google.com:19302',
+        'stun:stun3.l.google.com:19302',
+        'stun:stun4.l.google.com:19302',
+        'stun:stun.cloudflare.com:3478',
+        'stun:global.stun.twilio.com:3478'
+      ]
+    }
+  ];
+
+  // Helper to validate and normalize dynamic/static TURN server items
+  const isValidTurnServer = (server: any): boolean => {
+    if (!server || typeof server !== 'object') return false;
+    const urls = Array.isArray(server.urls) ? server.urls : [server.urls];
+    const hasTurnUrl = urls.some((u: any) => typeof u === 'string' && (u.startsWith('turn:') || u.startsWith('turns:')));
+    const hasCredentials = typeof server.username === 'string' && server.username.length > 0 &&
+                           typeof server.credential === 'string' && server.credential.length > 0;
+    return hasTurnUrl && hasCredentials;
+  };
+
+  // 1. Provider A: Xirsys Dynamic Ephemeral TURN API
   const xirsysIdent = (process.env.XIRSYS_IDENT || '').trim();
   const xirsysSecret = (process.env.XIRSYS_SECRET || '').trim();
   const xirsysChannel = (process.env.XIRSYS_CHANNEL || 'channel5cb534b4').trim();
 
-  // If Xirsys credentials are fully configured on the server, request dynamic TURN credentials
   if (xirsysIdent && xirsysSecret) {
     try {
       const encodedChannel = encodeURIComponent(xirsysChannel);
@@ -139,35 +162,90 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       if (xirsysRes.ok) {
         const payload: any = await xirsysRes.json();
-        const iceServers = payload?.v?.iceServers || payload?.data?.v?.iceServers;
-        if (Array.isArray(iceServers) && iceServers.length > 0) {
-          // Return ONLY { "iceServers": [...] } to the authenticated CampusCare client
-          return res.status(200).json({
-            iceServers
-          });
+        const rawServers = payload?.v?.iceServers || payload?.data?.v?.iceServers;
+        if (Array.isArray(rawServers) && rawServers.length > 0) {
+          const validTurn = rawServers.filter(isValidTurnServer);
+          if (validTurn.length > 0) {
+            return res.status(200).json({
+              iceServers: [...standardStunServers, ...validTurn],
+              turnConfigured: true,
+              provider: 'xirsys'
+            });
+          }
         }
       }
-      console.warn('[api/ice] Xirsys Dynamic TURN API responded with non-200 status:', xirsysRes.status);
+      console.warn('[api/ice] Xirsys Dynamic TURN API responded with non-200 status');
     } catch (err: any) {
-      console.warn('[api/ice] Error requesting Xirsys Dynamic TURN credentials:', err?.message || 'Network error');
+      console.warn('[api/ice] Error requesting Xirsys Dynamic TURN credentials');
     }
   }
 
-  // Fallback: If Xirsys is not configured or fails, return STUN + reliable OpenRelay TURN servers
-  const fallbackServers = [
-    { urls: defaultStun },
-    {
-      urls: [
-        'turn:openrelay.metered.ca:80',
-        'turn:openrelay.metered.ca:443',
-        'turn:openrelay.metered.ca:443?transport=tcp'
-      ],
-      username: 'openrelayproject',
-      credential: 'openrelayproject'
-    }
-  ];
+  // 2. Provider B: Metered.ca Dynamic Ephemeral TURN API
+  const meteredDomain = (process.env.METERED_DOMAIN || '').trim();
+  const meteredApiKey = (process.env.METERED_API_KEY || '').trim();
 
+  if (meteredDomain && meteredApiKey) {
+    try {
+      let cleanDomain = meteredDomain.replace(/^https?:\/\//, '').replace(/\/$/, '');
+      if (!cleanDomain.includes('.')) {
+        cleanDomain = `${cleanDomain}.metered.live`;
+      }
+      const meteredUrl = `https://${cleanDomain}/api/v1/turn/credentials?apiKey=${encodeURIComponent(meteredApiKey)}`;
+
+      const meteredRes = await fetch(meteredUrl, {
+        method: 'GET',
+        headers: { 'Accept': 'application/json' },
+        signal: typeof AbortSignal !== 'undefined' && AbortSignal.timeout ? AbortSignal.timeout(6000) : undefined
+      });
+
+      if (meteredRes.ok) {
+        const meteredServers: any = await meteredRes.json();
+        if (Array.isArray(meteredServers) && meteredServers.length > 0) {
+          const validTurn = meteredServers.filter(isValidTurnServer);
+          if (validTurn.length > 0) {
+            return res.status(200).json({
+              iceServers: [...standardStunServers, ...validTurn],
+              turnConfigured: true,
+              provider: 'metered'
+            });
+          }
+        }
+      }
+      console.warn('[api/ice] Metered.ca Dynamic TURN API responded with non-200 status');
+    } catch (err: any) {
+      console.warn('[api/ice] Error requesting Metered.ca Dynamic TURN credentials');
+    }
+  }
+
+  // 3. Provider C: Static Server-Side CoTURN / Cloud TURN Instance
+  const staticTurnServer = (process.env.TURN_SERVER || process.env.TURN_URL || '').trim();
+  const staticTurnUser = (process.env.TURN_USERNAME || '').trim();
+  const staticTurnCred = (process.env.TURN_CREDENTIAL || process.env.TURN_SECRET || '').trim();
+
+  if (staticTurnServer && staticTurnCred) {
+    const urls = staticTurnServer.includes(',')
+      ? staticTurnServer.split(',').map(u => u.trim())
+      : staticTurnServer;
+
+    const staticServer = {
+      urls,
+      username: staticTurnUser,
+      credential: staticTurnCred
+    };
+
+    if (isValidTurnServer(staticServer)) {
+      return res.status(200).json({
+        iceServers: [...standardStunServers, staticServer],
+        turnConfigured: true,
+        provider: 'static'
+      });
+    }
+  }
+
+  // 4. Safe Fallback: No valid TURN credentials configured in server environment
   return res.status(200).json({
-    iceServers: fallbackServers
+    iceServers: standardStunServers,
+    turnConfigured: false,
+    warning: 'No server-side TURN relay credentials configured. Symmetric NAT traversal requires XIRSYS_IDENT + XIRSYS_SECRET, METERED_DOMAIN + METERED_API_KEY, or TURN_SERVER + TURN_CREDENTIAL in Vercel environment variables.'
   });
 }

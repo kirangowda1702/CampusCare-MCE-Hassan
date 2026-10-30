@@ -640,16 +640,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
       }
 
-      let allSignals: any[] = [];
+      // Deduplicate signals across alias room keys
+      const seenMsgMap = new Map<string, any>();
       for (const rk of roomKeys) {
         const sigs = globalThis.__campuscare_signals[rk] || [];
-        allSignals = allSignals.concat(sigs);
+        for (const s of sigs) {
+          const key = s.payload?.msgId || `${s.senderId}_${s.createdAt}_${s.payload?.type}`;
+          if (!seenMsgMap.has(key)) {
+            seenMsgMap.set(key, s);
+          }
+        }
       }
 
+      const allSignals = Array.from(seenMsgMap.values());
       const now = Date.now();
+      const cutoffTime = since > 0 ? Math.min(since, now - 45000) : (now - 60000);
       const pending = allSignals.filter(s => {
-        const notMe = s.senderId !== callerId;
-        const isNew = s.createdAt > since;
+        const notMe = s.senderId !== callerId && s.senderId !== (req.headers['x-user-id'] || '');
+        const isNew = s.createdAt >= cutoffTime;
         const notExpired = (now - s.createdAt) < 120000;
         return notMe && isNew && notExpired;
       });
@@ -878,18 +886,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       const now = Date.now();
+      const senderId = payload.senderId || caller.id;
       for (const rk of roomKeys) {
         if (!globalThis.__campuscare_signals[rk]) {
           globalThis.__campuscare_signals[rk] = [];
         }
         globalThis.__campuscare_signals[rk].push({
-          senderId: caller.id,
+          senderId,
           payload,
           createdAt: now
         });
         globalThis.__campuscare_signals[rk] = globalThis.__campuscare_signals[rk]
           .filter(s => (now - s.createdAt) < 120000)
-          .slice(-50);
+          .slice(-100);
       }
 
       return res.status(200).json({ success: true, serverTime: now });

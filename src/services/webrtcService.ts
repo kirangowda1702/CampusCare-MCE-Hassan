@@ -33,7 +33,10 @@ export function hasTurnRelay(iceServers: RTCIceServer[]): boolean {
   if (!Array.isArray(iceServers)) return false;
   return iceServers.some(s => {
     const urls = Array.isArray(s.urls) ? s.urls : [s.urls];
-    return urls.some(u => typeof u === 'string' && (u.startsWith('turn:') || u.startsWith('turns:')));
+    const isTurn = urls.some(u => typeof u === 'string' && (u.startsWith('turn:') || u.startsWith('turns:')));
+    const hasCreds = Boolean(s.username && s.credential);
+    const isDeadOpenRelay = s.username === 'openrelayproject';
+    return isTurn && hasCreds && !isDeadOpenRelay;
   });
 }
 
@@ -43,12 +46,22 @@ export function getWebRTCConfiguration(): WebRTCConfig {
     : (typeof process !== 'undefined' && process.env ? process.env : {});
 
   const stunServer = env.VITE_STUN_SERVER || 'stun:stun.l.google.com:19302';
-  const turnServer = env.VITE_TURN_SERVER;
-  const turnUsername = env.VITE_TURN_USERNAME;
-  const turnCredential = env.VITE_TURN_CREDENTIAL;
+  const turnServer = env.TURN_SERVER || env.VITE_TURN_SERVER;
+  const turnUsername = env.TURN_USERNAME || env.VITE_TURN_USERNAME;
+  const turnCredential = env.TURN_CREDENTIAL || env.VITE_TURN_CREDENTIAL;
 
   const iceServers: RTCIceServer[] = [
-    { urls: stunServer }
+    {
+      urls: [
+        stunServer,
+        'stun:stun1.l.google.com:19302',
+        'stun:stun2.l.google.com:19302',
+        'stun:stun3.l.google.com:19302',
+        'stun:stun4.l.google.com:19302',
+        'stun:stun.cloudflare.com:3478',
+        'stun:global.stun.twilio.com:3478'
+      ]
+    }
   ];
 
   if (turnServer && turnUsername && turnCredential) {
@@ -56,17 +69,6 @@ export function getWebRTCConfiguration(): WebRTCConfig {
       urls: turnServer,
       username: turnUsername,
       credential: turnCredential
-    });
-  } else {
-    // OpenRelay public fallback for symmetric NAT cross-network traversal
-    iceServers.push({
-      urls: [
-        'turn:openrelay.metered.ca:80',
-        'turn:openrelay.metered.ca:443',
-        'turn:openrelay.metered.ca:443?transport=tcp'
-      ],
-      username: 'openrelayproject',
-      credential: 'openrelayproject'
     });
   }
 
@@ -126,7 +128,12 @@ export function isTurnConfigured(): boolean {
     ? import.meta.env
     : (typeof process !== 'undefined' && process.env ? process.env : {});
 
-  return Boolean(env.VITE_TURN_SERVER && env.VITE_TURN_USERNAME && env.VITE_TURN_CREDENTIAL);
+  return Boolean(
+    (env.TURN_SERVER && env.TURN_USERNAME && env.TURN_CREDENTIAL) ||
+    (env.VITE_TURN_SERVER && env.VITE_TURN_USERNAME && env.VITE_TURN_CREDENTIAL) ||
+    (env.XIRSYS_IDENT && env.XIRSYS_SECRET) ||
+    (env.METERED_DOMAIN && env.METERED_API_KEY)
+  );
 }
 
 export type SignalType = 
@@ -204,11 +211,54 @@ export class RealtimeSignalingChannel {
     return this.channelName;
   }
 
+  private roomJoinedAt: number = Date.now() - 10000;
+
   public setPeerConnected(connected: boolean) {
     this.isPeerConnected = connected;
     if (connected && this.heartbeatInterval) {
       clearInterval(this.heartbeatInterval);
       this.heartbeatInterval = null;
+    }
+    // Reconfigure polling interval to 2000ms while connected
+    if (this.pollInterval) {
+      clearInterval(this.pollInterval);
+      this.pollInterval = setInterval(() => {
+        this.pollSignalsOnce();
+      }, connected ? 2000 : 500);
+    }
+  }
+
+  private isPollingActive: boolean = false;
+  private async pollSignalsOnce() {
+    if (typeof window === 'undefined' || typeof fetch === 'undefined') return;
+    if (this.isPollingActive) return;
+    this.isPollingActive = true;
+
+    try {
+      const userCtx = {
+        id: this.currentUserId,
+        role: this.currentUserRole,
+        fullName: this.currentUserName
+      };
+      const headers = await getAuthHeaders(userCtx);
+      const res = await fetch(`/api/appointments?action=signal_poll&roomId=${encodeURIComponent(this.roomId)}&since=${this.roomJoinedAt}`, {
+        method: 'GET',
+        headers,
+        signal: typeof AbortSignal !== 'undefined' && AbortSignal.timeout ? AbortSignal.timeout(3000) : undefined
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data?.signals)) {
+          data.signals.forEach((sig: SignalPayload) => {
+            this.handleIncomingPayload(sig, 'Cloud Relay');
+          });
+        }
+      }
+    } catch (e) {
+      // quiet retry
+    } finally {
+      this.isPollingActive = false;
     }
   }
 
@@ -219,7 +269,7 @@ export class RealtimeSignalingChannel {
     if (payload.msgId) {
       if (this.seenMessageIds.has(payload.msgId)) return;
       this.seenMessageIds.add(payload.msgId);
-      if (this.seenMessageIds.size > 300) {
+      if (this.seenMessageIds.size > 500) {
         const first = this.seenMessageIds.values().next().value;
         if (first) this.seenMessageIds.delete(first);
       }
@@ -291,12 +341,12 @@ export class RealtimeSignalingChannel {
       }
     }
 
-    // Safety fallback: If not yet subscribed after 1000ms, mark ready via relay
+    // Safety fallback: If not yet subscribed after 800ms, mark ready via relay
     setTimeout(() => {
       onChannelReady();
-    }, 1000);
+    }, 800);
 
-    // 2. Setup Serverless Cloud Signaling Relay Polling (Ensures cross-network arrival)
+    // 2. Setup Serverless Cloud Signaling Relay Polling
     this.startRelayPolling();
 
     // 3. Proactive Presence Heartbeat while waiting for peer connection
@@ -314,43 +364,14 @@ export class RealtimeSignalingChannel {
   private startRelayPolling() {
     if (typeof window === 'undefined' || typeof fetch === 'undefined') return;
 
-    this.pollInterval = setInterval(async () => {
-      if (this.isPeerConnected) {
-        if (this.pollInterval) {
-          clearInterval(this.pollInterval);
-          this.pollInterval = null;
-        }
-        return;
-      }
+    // Immediate initial poll
+    this.pollSignalsOnce();
 
-      try {
-        const userCtx = {
-          id: this.currentUserId,
-          role: this.currentUserRole,
-          fullName: this.currentUserName
-        };
-        const headers = await getAuthHeaders(userCtx);
-        const res = await fetch(`/api/appointments?action=signal_poll&roomId=${encodeURIComponent(this.roomId)}&since=${this.lastPollTime}`, {
-          method: 'GET',
-          headers,
-          signal: typeof AbortSignal !== 'undefined' && AbortSignal.timeout ? AbortSignal.timeout(3000) : undefined
-        });
-
-        if (res.ok) {
-          const data = await res.json();
-          if (data?.serverTime) {
-            this.lastPollTime = Math.max(this.lastPollTime, data.serverTime - 500);
-          }
-          if (Array.isArray(data?.signals)) {
-            data.signals.forEach((sig: SignalPayload) => {
-              this.handleIncomingPayload(sig, 'Cloud Relay');
-            });
-          }
-        }
-      } catch (e) {
-        // quiet retry
-      }
-    }, 1200);
+    // Active polling: 500ms during negotiation, 2000ms once connected
+    if (this.pollInterval) clearInterval(this.pollInterval);
+    this.pollInterval = setInterval(() => {
+      this.pollSignalsOnce();
+    }, this.isPeerConnected ? 2000 : 500);
   }
 
   private dispatchSupabaseSignal(payload: SignalPayload) {

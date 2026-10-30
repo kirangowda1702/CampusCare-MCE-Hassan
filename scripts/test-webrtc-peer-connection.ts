@@ -523,7 +523,21 @@ async function runTestSuite() {
     console.log('       [WebRTC] STUN Server active: stun:stun.l.google.com:19302');
     console.log('       [WebRTC] TURN Status:', isTurn ? 'CONFIGURED' : 'TURN NOT CONFIGURED');
 
-    assert.ok(rtcConfig.iceServers.some(s => s.urls.includes('google.com')), 'STUN must be configured');
+    const hasGoogleStun = rtcConfig.iceServers.some(s => {
+      const urlList = Array.isArray(s.urls) ? s.urls : [s.urls];
+      return urlList.some(u => typeof u === 'string' && u.includes('google.com'));
+    });
+    const hasCloudflareStun = rtcConfig.iceServers.some(s => {
+      const urlList = Array.isArray(s.urls) ? s.urls : [s.urls];
+      return urlList.some(u => typeof u === 'string' && u.includes('cloudflare.com'));
+    });
+    const hasTwilioStun = rtcConfig.iceServers.some(s => {
+      const urlList = Array.isArray(s.urls) ? s.urls : [s.urls];
+      return urlList.some(u => typeof u === 'string' && u.includes('twilio.com'));
+    });
+    assert.ok(hasGoogleStun, 'Google STUN server must be configured in ICE servers');
+    assert.ok(hasCloudflareStun, 'Cloudflare STUN server must be configured in ICE servers');
+    assert.ok(hasTwilioStun, 'Twilio STUN server must be configured in ICE servers');
     assert.strictEqual(isTurn, false, 'TURN server is not configured in this environment (verified truthfully)');
 
     // 15b: Perfect Negotiation Deadlock Prevention Check
@@ -548,6 +562,58 @@ async function runTestSuite() {
     assert.strictEqual(patientPc.connectionState, 'closed');
     assert.strictEqual(doctorVideoStream.getTracks()[0].readyState, 'ended');
     assert.strictEqual(patientVideoStream.getTracks()[0].readyState, 'ended');
+  });
+
+  // 16. JOINING ORDER VERIFICATION: Patient joins room first, Doctor joins later
+  await test('16. Joining Order: Patient-first entry followed by Doctor presence handshake', async () => {
+    // Patient enters room first (polite peer waiting for doctor)
+    const lateTestRoomId = 'MCE-APT-2026-9999';
+    const patientFirstSignaling = new RealtimeSignalingChannel(lateTestRoomId, 'usr-patient-1', 'student', 'Late Patient');
+    const patientPc1 = new MockRTCPeerConnection(getWebRTCConfiguration());
+    
+    // Patient adds local tracks
+    const patTrack = new MockMediaStreamTrack('video', 'Patient Cam');
+    const patStream = new MockMediaStream([patTrack]);
+    patientPc1.addTrack(patTrack, patStream);
+
+    // Patient sits in 'stable' state waiting for doctor offer
+    assert.strictEqual(patientPc1.signalingState, 'stable');
+
+    // Doctor enters room later (impolite peer)
+    const doctorSecondSignaling = new RealtimeSignalingChannel(lateTestRoomId, 'DOC001', 'doctor', 'Dr. Kiran');
+    const doctorPc1 = new MockRTCPeerConnection(getWebRTCConfiguration());
+    const docTrack = new MockMediaStreamTrack('video', 'Doctor Cam');
+    const docStream = new MockMediaStream([docTrack]);
+    doctorPc1.addTrack(docTrack, docStream);
+
+    // Doctor generates offer and sets local description
+    const offer = await doctorPc1.createOffer();
+    await doctorPc1.setLocalDescription(offer);
+    assert.strictEqual(doctorPc1.signalingState, 'have-local-offer');
+
+    // Patient receives offer and replies with answer
+    await patientPc1.setRemoteDescription(offer);
+    assert.strictEqual(patientPc1.signalingState, 'have-remote-offer');
+    const answer = await patientPc1.createAnswer();
+    await patientPc1.setLocalDescription(answer);
+    assert.strictEqual(patientPc1.signalingState, 'stable');
+
+    // Doctor processes answer and returns to stable
+    await doctorPc1.setRemoteDescription(answer);
+    assert.strictEqual(doctorPc1.signalingState, 'stable');
+
+    // Establish connection
+    doctorPc1.simulateConnectionEstablished([patTrack]);
+    patientPc1.simulateConnectionEstablished([docTrack]);
+
+    assert.strictEqual(doctorPc1.connectionState, 'connected');
+    assert.strictEqual(patientPc1.connectionState, 'connected');
+
+    // Cleanup
+    patientPc1.close();
+    doctorPc1.close();
+    patientFirstSignaling.unsubscribe();
+    doctorSecondSignaling.unsubscribe();
   });
 
   console.log('\n========================================================================');
